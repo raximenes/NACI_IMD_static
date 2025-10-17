@@ -1,4 +1,13 @@
-.Rproj.user
+# R and RStudio
 .Rhistory
 .RData
+.Rproj.user/
 .Ruserdata
+
+# Project-specific: ignore data and outputs
+data/
+outputs/
+
+# OS-specific
+.DS_Store
+Thumbs.db
