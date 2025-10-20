@@ -25,7 +25,7 @@
 }
 
 # Linear VE decay calculation
-calculate_all_ve <- function(data, n_cycles = 89, waning_type = "linear") {
+calculate_all_ve <- function(data, n_cycles = 89, waning_type = "linear") { # n_cycles = 89 for 90 years
   years <- 1:n_cycles
   
   out_list <- lapply(seq_len(nrow(data)), function(i) {
