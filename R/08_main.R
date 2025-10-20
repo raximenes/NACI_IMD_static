@@ -28,7 +28,9 @@ main <- function() {
   
   ## --- PROBABILISTIC SENSITIVITY ANALYSIS (PSA) ---
   log_info("\n=== Running Probabilistic Sensitivity Analysis (PSA) ===")
-  psa_long <- run_psa(params_bc, n_sim = 1000, wtp = 50000)
+  psa_output <- run_psa(params_bc, n_sim = 1000, wtp = 50000)
+  psa_long <- psa_output$results
+  psa_df <- psa_output$psa_df
   
   objs <- make_psa_objects(psa_long, strategies = v_strats, wtp_vec = v_wtp)
   
@@ -69,5 +71,5 @@ main <- function() {
   log_info(paste("Figures:", OUT_FIG))
   log_info(paste("Tables:",  OUT_TAB))
   
-  invisible(list(deterministic = det, psa = psa_long, psa_objects = objs, owsa = owsa_out))
+  invisible(list(deterministic = det, psa = psa_long, psa_parameters = psa_df, psa_objects = objs, owsa = owsa_out))
 }

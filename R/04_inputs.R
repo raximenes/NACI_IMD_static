@@ -1,156 +1,529 @@
-# 04_inputs.R
+# 04_inputs.R (UPDATED - COMPLETE VERSION)
 # Read Excel inputs and build base-case parameters
+# - Removed get_col, len_ok, conv functions
+# - Using direct column names from Excel
+# - Using darthtools::rate_to_prob for conversions
+# - Reading SD values directly from Excel
+# 
+# IMPORTANT: Parameters WITHOUT SD values in Excel will remain FIXED in PSA
+# - To make a parameter vary in PSA: provide a valid SD > 0
+# - To keep a parameter fixed in PSA: set SD to 0, NA, or leave blank
+# - This applies to both scalar and time-varying (vector) parameters
 
 file_main  <- file.path(IN_RAW, "IMD Data.xls")
 file_price <- file.path(IN_RAW, "vaccine_costs.xlsx")
 
 get_base_params <- function() {
-  if (!file.exists(file_main))  log_error(paste("Excel file not found:", file_main))
+  
+  # ============================================================
+  # STEP 1: Read Excel file and load all sheets
+  # ============================================================
+  
+  if (!file.exists(file_main)) {
+    log_error(paste("Excel file not found:", file_main))
+  }
   
   log_info(paste("Reading data from:", file_main))
   sheet_names <- readxl::excel_sheets(file_main)
   data_list <- lapply(sheet_names, function(s) readxl::read_excel(file_main, sheet = s))
   names(data_list) <- sheet_names
   
-  getv <- function(df, nm, default) {
-    if (is.null(df) || !all(c("Name", "Value") %in% names(df))) return(default)
-    v <- df$Value[df$Name == nm]; if (length(v) == 0) default else as.numeric(v[1])
+  # ============================================================
+  # STEP 2: Helper functions (NO DEFAULTS - strict validation)
+  # ============================================================
+  
+  # Get single value from name-value table
+  getv <- function(df, nm, sheet_name = "unknown") {
+    if (is.null(df) || !all(c("Name", "Value") %in% names(df))) {
+      log_error(paste0("Sheet '", sheet_name, "' is missing or incorrectly formatted"))
+    }
+    v <- df$Value[df$Name == nm]
+    if (length(v) == 0) {
+      log_error(paste0("Parameter '", nm, "' not found in sheet '", sheet_name, "'"))
+    }
+    as.numeric(v[1])
   }
   
-  # ---- Model settings ----
-  ms  <- data_list[["model_settings"]]
-  nC  <- getv(ms, "n_cycles", n_cycles)
-  cyc <- getv(ms, "cycle_len", 1)
-  dc  <- getv(ms, "d_c", 0.015)
-  de  <- getv(ms, "d_e", 0.015)
+  # Get SD value from name-value table (returns NA if not found - for optional SDs)
+  get_sd <- function(df, nm, sheet_name = "unknown") {
+    if (is.null(df) || !"sd" %in% names(df)) {
+      log_warn(paste0("Sheet '", sheet_name, "' does not have 'sd' column"))
+      return(NA)
+    }
+    v <- df$sd[df$Name == nm]
+    if (length(v) == 0) {
+      log_warn(paste0("SD for '", nm, "' not found in sheet '", sheet_name, "'"))
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
   
-  cov_ABCWY <- getv(ms, "coverage_ABCWY", 0.90)
-  cov_ACWY  <- getv(ms, "coverage_ACWY",  0.94)
-  cov_C     <- getv(ms, "coverage_C",     0.93)
-  cov_B     <- getv(ms, "coverage_B",     0.60)
+  # ============================================================
+  # STEP 3: Model Settings
+  # ============================================================
   
-  # ---- Costs + prices ----
+  ms <- data_list[["model_settings"]]
+  if (is.null(ms)) {
+    log_error("Sheet 'model_settings' not found in Excel file")
+  }
+  
+  nC  <- getv(ms, "n_cycles", "model_settings")
+  cyc <- getv(ms, "cycle_len", "model_settings")
+  dc  <- getv(ms, "d_c", "model_settings")
+  de  <- getv(ms, "d_e", "model_settings")
+  
+  cov_ABCWY <- getv(ms, "coverage_ABCWY", "model_settings")
+  cov_ACWY  <- getv(ms, "coverage_ACWY", "model_settings")
+  cov_C     <- getv(ms, "coverage_C", "model_settings")
+  cov_B     <- getv(ms, "coverage_B", "model_settings")
+  
+  # Optional: coverage SDs (for PSA)
+  sd_cov_ABCWY <- get_sd(ms, "coverage_ABCWY", "model_settings")
+  sd_cov_ACWY  <- get_sd(ms, "coverage_ACWY", "model_settings")
+  sd_cov_C     <- get_sd(ms, "coverage_C", "model_settings")
+  sd_cov_B     <- get_sd(ms, "coverage_B", "model_settings")
+  
+  log_info(paste("Model settings: n_cycles =", nC, ", cycle_length =", cyc))
+  
+  # ============================================================
+  # STEP 4: Vaccine Prices
+  # ============================================================
+  
+  if (!file.exists(file_price)) {
+    log_error(paste("Vaccine price file not found:", file_price))
+  }
+  
+  log_info(paste("Reading vaccine prices from:", file_price))
+  pr <- readxl::read_excel(file_price)
+  
+  if (!all(c("Name", "Value") %in% names(pr))) {
+    log_error("vaccine_costs.xlsx must have 'Name' and 'Value' columns")
+  }
+  
+  getp <- function(nm) {
+    v <- pr$Value[pr$Name == nm]
+    if (length(v) == 0) {
+      log_error(paste0("Vaccine price '", nm, "' not found in vaccine_costs.xlsx"))
+    }
+    as.numeric(v[1])
+  }
+  
+  get_price_sd <- function(nm) {
+    if (!"sd" %in% names(pr)) {
+      log_warn("No 'sd' column in vaccine_costs.xlsx - vaccine prices will not vary in PSA")
+      return(NA)
+    }
+    v <- pr$sd[pr$Name == nm]
+    if (length(v) == 0) {
+      log_warn(paste0("SD for '", nm, "' not found - this vaccine price will not vary in PSA"))
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
+  
+  c_MenABCWY <- getp("c_MenABCWY")
+  c_MenACWY  <- getp("c_MenACWY")
+  c_MenC     <- getp("c_MenC")
+  c_MenB     <- getp("c_MenB")
+  
+  sd_c_MenABCWY <- get_price_sd("c_MenABCWY")
+  sd_c_MenACWY  <- get_price_sd("c_MenACWY")
+  sd_c_MenC     <- get_price_sd("c_MenC")
+  sd_c_MenB     <- get_price_sd("c_MenB")
+  
+  # ============================================================
+  # STEP 5: Other Costs (admin, sequelae)
+  # ============================================================
+  
   costs_tbl <- data_list[["costs"]]
-  c_admin <- getv(costs_tbl, "c_admin", 14.70)
+  if (is.null(costs_tbl)) {
+    log_error("Sheet 'costs' not found in Excel file")
+  }
   
-  if (file.exists(file_price)) {
-    log_info(paste("Reading vaccine prices from:", file_price))
-    pr <- readxl::read_excel(file_price)
-    getp <- function(nm, default) { v <- pr$Value[pr$Name == nm]; if (length(v) == 0) default else as.numeric(v[1]) }
-    c_MenABCWY <- getp("c_MenABCWY", 92)
-    c_MenACWY  <- getp("c_MenACWY",  32)
-    c_MenC     <- getp("c_MenC",     13)
-    c_MenB     <- getp("c_MenB",     82)
+  getc <- function(nm) {
+    if (!all(c("Name", "Value") %in% names(costs_tbl))) {
+      log_error("Sheet 'costs' is missing 'Name' or 'Value' columns")
+    }
+    v <- costs_tbl$Value[costs_tbl$Name == nm]
+    if (length(v) == 0) {
+      log_error(paste0("Cost parameter '", nm, "' not found in 'costs' sheet"))
+    }
+    as.numeric(v[1])
+  }
+  
+  get_sd_c <- function(nm) {
+    if (!"sd" %in% names(costs_tbl)) {
+      log_warn("Sheet 'costs' does not have 'sd' column - costs will not vary in PSA")
+      return(NA)
+    }
+    v <- costs_tbl$sd[costs_tbl$Name == nm]
+    if (length(v) == 0) {
+      log_warn(paste0("SD for cost '", nm, "' not found"))
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
+  
+  c_admin          <- getc("c_admin")
+  c_Healthy        <- getc("c_Healthy")
+  c_Scarring       <- getc("c_Scarring")
+  c_Single_Amput   <- getc("c_Single_Amput")
+  c_Multiple_Amput <- getc("c_Multiple_Amput")
+  c_Neuro_Disab    <- getc("c_Neuro_Disab")
+  c_Hearing_Loss   <- getc("c_Hearing_Loss")
+  c_Renal_Failure  <- getc("c_Renal_Failure")
+  c_Seizure        <- getc("c_Seizure")
+  c_Paralysis      <- getc("c_Paralysis")
+  c_Dead           <- getc("c_Dead")
+  
+  sd_c_admin          <- get_sd_c("c_admin")
+  sd_c_Healthy        <- get_sd_c("c_Healthy")
+  sd_c_Scarring       <- get_sd_c("c_Scarring")
+  sd_c_Single_Amput   <- get_sd_c("c_Single_Amput")
+  sd_c_Multiple_Amput <- get_sd_c("c_Multiple_Amput")
+  sd_c_Neuro_Disab    <- get_sd_c("c_Neuro_Disab")
+  sd_c_Hearing_Loss   <- get_sd_c("c_Hearing_Loss")
+  sd_c_Renal_Failure  <- get_sd_c("c_Renal_Failure")
+  sd_c_Seizure        <- get_sd_c("c_Seizure")
+  sd_c_Paralysis      <- get_sd_c("c_Paralysis")
+  sd_c_Dead           <- get_sd_c("c_Dead")
+  
+  # ============================================================
+  # STEP 6: Infection Costs (time-varying vector)
+  # ============================================================
+  
+  cost_imd <- data_list[["cost_IMD"]]
+  if (is.null(cost_imd)) {
+    log_error("Sheet 'cost_IMD' not found in Excel file")
+  }
+  
+  if (!"cost" %in% names(cost_imd)) {
+    log_error("Sheet 'cost_IMD' must have 'cost' column")
+  }
+  
+  c_IMD_infection <- as.numeric(cost_imd$cost)
+  
+  if (length(c_IMD_infection) != nC) {
+    log_error(paste0("cost_IMD has ", length(c_IMD_infection), 
+                     " rows but n_cycles is ", nC))
+  }
+  
+  if ("sd" %in% names(cost_imd)) {
+    sd_c_IMD_infection <- as.numeric(cost_imd$sd)
   } else {
-    c_MenABCWY <- 92; c_MenACWY <- 32; c_MenC <- 13; c_MenB <- 82
-    log_warn("vaccine_costs.xlsx not found. Using default prices (CAD).")
+    log_warn("Sheet 'cost_IMD' does not have 'sd' column - infection costs will not vary in PSA")
+    sd_c_IMD_infection <- rep(NA, nC)
   }
   
+  # ============================================================
+  # STEP 7: Infection Probabilities (time-varying vectors)
+  # ============================================================
   
-  ## ---- Infection rates/probabilities ----
   inf <- data_list[["infection"]]
-  
-  # Helper to get column by multiple possible names
-  get_col <- function(df, candidates) {
-    idx <- which(names(df) %in% candidates)
-    if (length(idx) == 0) return(NULL)
-    as.numeric(df[[idx[1]]])
+  if (is.null(inf)) {
+    log_error("Sheet 'infection' not found in Excel file")
   }
   
-  # Improved conversion function for rates/probabilities
-  conv <- function(x) {
-    if (is.null(x)) return(rep(0, nC))
-    
-    # Check if values look like percentages (all > 1 but < 100)
-    if (all(x > 1 & x <= 100, na.rm = TRUE)) {
-      log_info("Converting percentages to proportions")
-      x <- x / 100
-    }
-    
-    # If still > 1, treat as rates and convert
-    if (any(x > 1, na.rm = TRUE)) {
-      log_info("Converting rates to probabilities")
-      x <- darthtools::rate_to_prob(x, t = cyc)
-    }
-    
-    .clamp(x, 0, 1)
-  }
-  
-  # Ensure vectors are correct length
-  len_ok <- function(v) {
-    if (length(v) < nC) {
-      rep(v, length.out = nC)
-    } else {
-      head(v, nC)
-    }
-  }
-  
-  p_B <- len_ok(conv(get_col(inf, c("SerogroupB_Infection", "r_SerogroupB_Infection", "p_SerogroupB_Infection"))))
-  p_C <- len_ok(conv(get_col(inf, c("SerogroupC_Infection", "r_SerogroupC_Infection", "p_SerogroupC_Infection"))))
-  p_W <- len_ok(conv(get_col(inf, c("SerogroupW_Infection", "r_SerogroupW_Infection", "p_SerogroupW_Infection"))))
-  p_Y <- len_ok(conv(get_col(inf, c("SerogroupY_Infection", "r_SerogroupY_Infection", "p_SerogroupY_Infection"))))
-  
-  ## ---- Mortality ----
-  mort <- data_list[["mortality"]]
-  bg <- get_col(mort, c("Background_Mortality", "p_Background_Mortality", "r_Background_Mortality"))
-  p_bg <- len_ok(conv(bg))
-  
-  to_prob <- function(x, default) {
-    if (is.null(x)) return(rep(default, nC))
-    conv(x)
-  }
-  
-  p_B_CFR <- len_ok(to_prob(get_col(mort, c("SerogroupB_Dead", "p_SerogroupB_Dead", "r_SerogroupB_Dead")), 0.10))
-  p_C_CFR <- len_ok(to_prob(get_col(mort, c("SerogroupC_Dead", "p_SerogroupC_Dead", "r_SerogroupC_Dead")), 0.15))
-  p_W_CFR <- len_ok(to_prob(get_col(mort, c("SerogroupW_Dead", "p_SerogroupW_Dead", "r_SerogroupW_Dead")), 0.12))
-  p_Y_CFR <- len_ok(to_prob(get_col(mort, c("SerogroupY_Dead", "p_SerogroupY_Dead", "r_SerogroupY_Dead")), 0.11))
-  
-  ## ---- Sequelae shares and overall probability ----
-  seq_tbl <- data_list[["sequelae_probp_IMD"]]
-  gv <- function(nm, default) {
-    v <- seq_tbl$Value[seq_tbl$Name == nm]
-    if (length(v) == 0) default else as.numeric(v[1])
-  }
-  
-  shares_raw <- c(
-    Scarring         = gv("p_IMD_Scarring",         0.10),
-    Single_Amput     = gv("p_IMD_Single_Amput",     0.08),
-    Multiple_Amput   = gv("p_IMD_Multiple_Amput",   0.04),
-    Neuro_Disability = gv("p_IMD_Neuro_Disability", 0.20),
-    Hearing_Loss     = gv("p_IMD_Hearing_Loss",     0.25),
-    Renal_Failure    = gv("p_IMD_Renal_Failure",    0.05),
-    Seizure          = gv("p_IMD_Seizure",          0.18),
-    Paralysis        = gv("p_IMD_Paralysis",        0.10)
+  required_inf_cols <- c(
+    "SerogroupB_Infection", "sd_SerogroupB_Infection",
+    "SerogroupC_Infection", "sd_SerogroupC_Infection",
+    "SerogroupW_Infection", "sd_SerogroupW_Infection",
+    "SerogroupY_Infection", "sd_SerogroupY_Infection"
   )
   
-  w_seq <- .normalize_shares(shares_raw, default_share = shares_raw / sum(shares_raw))
-  p_seq_overall <- .clamp(gv("p_IMD_overall", 0.25), 0, 1)
-  
-  ## ---- Vaccine effectiveness (VE) data with linear waning ----
-  ve_df <- data_list[["vac_effect"]]
-  
-  if (is.null(ve_df)) {
-    log_warn("vac_effect sheet not found. Using default VE values.")
-    ve_df <- tibble::tibble(
-      Name = c("MenABCWY_for_SeroACWY", "MenABCWY_for_SeroB", "MenACWY", "MenC", "MenB"),
-      Value = c(0.85, 0.85, 0.85, 0.85, 0.75),
-      duration = c(10, 5, 10, 10, 5)
-    )
+  missing_inf_cols <- setdiff(required_inf_cols, names(inf))
+  if (length(missing_inf_cols) > 0) {
+    log_error(paste0("Missing required columns in 'infection' sheet: ", 
+                     paste(missing_inf_cols, collapse = ", ")))
   }
   
-  # FIXED: Define vaccine_names before using it
+  # Read rates
+  p_B_raw <- as.numeric(inf$SerogroupB_Infection)
+  p_C_raw <- as.numeric(inf$SerogroupC_Infection)
+  p_W_raw <- as.numeric(inf$SerogroupW_Infection)
+  p_Y_raw <- as.numeric(inf$SerogroupY_Infection)
+  
+  # Convert rates to probabilities using darthtools
+  p_B <- darthtools::rate_to_prob(p_B_raw, t = cyc)
+  p_C <- darthtools::rate_to_prob(p_C_raw, t = cyc)
+  p_W <- darthtools::rate_to_prob(p_W_raw, t = cyc)
+  p_Y <- darthtools::rate_to_prob(p_Y_raw, t = cyc)
+  
+  # Validate probabilities
+  if (any(p_B < 0 | p_B > 1, na.rm = TRUE)) {
+    log_error("Invalid probabilities in p_B after conversion from rates")
+  }
+  if (any(p_C < 0 | p_C > 1, na.rm = TRUE)) {
+    log_error("Invalid probabilities in p_C after conversion from rates")
+  }
+  if (any(p_W < 0 | p_W > 1, na.rm = TRUE)) {
+    log_error("Invalid probabilities in p_W after conversion from rates")
+  }
+  if (any(p_Y < 0 | p_Y > 1, na.rm = TRUE)) {
+    log_error("Invalid probabilities in p_Y after conversion from rates")
+  }
+  
+  # Clamp to safe range for model stability
+  p_B <- .clamp(p_B, 0, 0.999)
+  p_C <- .clamp(p_C, 0, 0.999)
+  p_W <- .clamp(p_W, 0, 0.999)
+  p_Y <- .clamp(p_Y, 0, 0.999)
+  
+  # Read SD values
+  sd_p_B <- as.numeric(inf$sd_SerogroupB_Infection)
+  sd_p_C <- as.numeric(inf$sd_SerogroupC_Infection)
+  sd_p_W <- as.numeric(inf$sd_SerogroupW_Infection)
+  sd_p_Y <- as.numeric(inf$sd_SerogroupY_Infection)
+  
+  log_info("Infection probabilities loaded and converted from rates")
+  
+  # ============================================================
+  # STEP 8: Mortality (background + CFRs)
+  # ============================================================
+  
+  mort <- data_list[["mortality"]]
+  if (is.null(mort)) {
+    log_error("Sheet 'mortality' not found in Excel file")
+  }
+  
+  required_mort_cols <- c(
+    "Background_Mortality", "sd_Background_Mortality",
+    "SerogroupB_Dead", "sd_SerogroupB_Dead",
+    "SerogroupC_Dead", "sd_SerogroupC_Dead",
+    "SerogroupW_Dead", "sd_SerogroupW_Dead",
+    "SerogroupY_Dead", "sd_SerogroupY_Dead"
+  )
+  
+  missing_mort_cols <- setdiff(required_mort_cols, names(mort))
+  if (length(missing_mort_cols) > 0) {
+    log_error(paste0("Missing required columns in 'mortality' sheet: ", 
+                     paste(missing_mort_cols, collapse = ", ")))
+  }
+  
+  # Background mortality (convert from rate)
+  bg_raw <- as.numeric(mort$Background_Mortality)
+  p_bg <- darthtools::rate_to_prob(bg_raw, t = cyc)
+  
+  if (any(p_bg < 0 | p_bg > 1, na.rm = TRUE)) {
+    log_error("Invalid probabilities in background mortality after conversion")
+  }
+  
+  p_bg <- .clamp(p_bg, 0, 0.999)
+  sd_p_bg <- as.numeric(mort$sd_Background_Mortality)
+  
+  # Case fatality rates (already probabilities)
+  p_B_CFR <- as.numeric(mort$SerogroupB_Dead)
+  p_C_CFR <- as.numeric(mort$SerogroupC_Dead)
+  p_W_CFR <- as.numeric(mort$SerogroupW_Dead)
+  p_Y_CFR <- as.numeric(mort$SerogroupY_Dead)
+  
+  # Validate CFRs
+  if (any(p_B_CFR < 0 | p_B_CFR > 1, na.rm = TRUE)) {
+    log_error("Invalid CFR values for Serogroup B")
+  }
+  if (any(p_C_CFR < 0 | p_C_CFR > 1, na.rm = TRUE)) {
+    log_error("Invalid CFR values for Serogroup C")
+  }
+  if (any(p_W_CFR < 0 | p_W_CFR > 1, na.rm = TRUE)) {
+    log_error("Invalid CFR values for Serogroup W")
+  }
+  if (any(p_Y_CFR < 0 | p_Y_CFR > 1, na.rm = TRUE)) {
+    log_error("Invalid CFR values for Serogroup Y")
+  }
+  
+  p_B_CFR <- .clamp(p_B_CFR, 0, 0.999)
+  p_C_CFR <- .clamp(p_C_CFR, 0, 0.999)
+  p_W_CFR <- .clamp(p_W_CFR, 0, 0.999)
+  p_Y_CFR <- .clamp(p_Y_CFR, 0, 0.999)
+  
+  # Read SD values
+  sd_p_B_CFR <- as.numeric(mort$sd_SerogroupB_Dead)
+  sd_p_C_CFR <- as.numeric(mort$sd_SerogroupC_Dead)
+  sd_p_W_CFR <- as.numeric(mort$sd_SerogroupW_Dead)
+  sd_p_Y_CFR <- as.numeric(mort$sd_SerogroupY_Dead)
+  
+  log_info("Mortality parameters loaded")
+  
+  # ============================================================
+  # STEP 9: Sequelae Probabilities and Shares
+  # ============================================================
+  
+  seq_tbl <- data_list[["sequelae_probp_IMD"]]
+  if (is.null(seq_tbl)) {
+    log_error("Sheet 'sequelae_probp_IMD' not found in Excel file")
+  }
+  
+  if (!all(c("Name", "Value") %in% names(seq_tbl))) {
+    log_error("Sheet 'sequelae_probp_IMD' must have 'Name' and 'Value' columns")
+  }
+  
+  gv_seq <- function(nm) {
+    v <- seq_tbl$Value[seq_tbl$Name == nm]
+    if (length(v) == 0) {
+      log_error(paste0("Parameter '", nm, "' not found in 'sequelae_probp_IMD' sheet"))
+    }
+    as.numeric(v[1])
+  }
+  
+  get_sd_seq <- function(nm) {
+    if (!"sd" %in% names(seq_tbl)) {
+      log_warn("Sheet 'sequelae_probp_IMD' does not have 'sd' column")
+      return(NA)
+    }
+    v <- seq_tbl$sd[seq_tbl$Name == nm]
+    if (length(v) == 0) {
+      log_warn(paste0("SD for '", nm, "' not found in 'sequelae_probp_IMD' sheet"))
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
+  
+  # Overall sequelae probability
+  p_seq_overall <- gv_seq("p_IMD_overall")
+  if (p_seq_overall < 0 || p_seq_overall > 1) {
+    log_error("p_IMD_overall must be between 0 and 1")
+  }
+  sd_p_seq_overall <- get_sd_seq("p_IMD_overall")
+  
+  # Sequelae shares
+  shares_raw <- c(
+    Scarring         = gv_seq("p_IMD_Scarring"),
+    Single_Amput     = gv_seq("p_IMD_Single_Amput"),
+    Multiple_Amput   = gv_seq("p_IMD_Multiple_Amput"),
+    Neuro_Disability = gv_seq("p_IMD_Neuro_Disability"),
+    Hearing_Loss     = gv_seq("p_IMD_Hearing_Loss"),
+    Renal_Failure    = gv_seq("p_IMD_Renal_Failure"),
+    Seizure          = gv_seq("p_IMD_Seizure"),
+    Paralysis        = gv_seq("p_IMD_Paralysis")
+  )
+  
+  # Normalize shares to sum to 1
+  w_seq <- .normalize_shares(shares_raw, default_share = shares_raw / sum(shares_raw))
+  
+  # Read SD for sequelae shares
+  sd_shares <- c(
+    Scarring         = get_sd_seq("p_IMD_Scarring"),
+    Single_Amput     = get_sd_seq("p_IMD_Single_Amput"),
+    Multiple_Amput   = get_sd_seq("p_IMD_Multiple_Amput"),
+    Neuro_Disability = get_sd_seq("p_IMD_Neuro_Disability"),
+    Hearing_Loss     = get_sd_seq("p_IMD_Hearing_Loss"),
+    Renal_Failure    = get_sd_seq("p_IMD_Renal_Failure"),
+    Seizure          = get_sd_seq("p_IMD_Seizure"),
+    Paralysis        = get_sd_seq("p_IMD_Paralysis")
+  )
+  
+  log_info("Sequelae parameters loaded")
+  
+  # ============================================================
+  # STEP 10: Utilities
+  # ============================================================
+  
+  utab <- data_list[["utilities"]]
+  if (is.null(utab)) {
+    log_error("Sheet 'utilities' not found in Excel file")
+  }
+  
+  if (!all(c("Name", "Value") %in% names(utab))) {
+    log_error("Sheet 'utilities' must have 'Name' and 'Value' columns")
+  }
+  
+  getu <- function(nm) {
+    v <- utab$Value[utab$Name == nm]
+    if (length(v) == 0) {
+      log_error(paste0("Utility parameter '", nm, "' not found in 'utilities' sheet"))
+    }
+    as.numeric(v[1])
+  }
+  
+  get_sd_u <- function(nm) {
+    if (!"sd" %in% names(utab)) {
+      log_warn("Sheet 'utilities' does not have 'sd' column - utilities will not vary in PSA")
+      return(NA)
+    }
+    v <- utab$sd[utab$Name == nm]
+    if (length(v) == 0) {
+      log_warn(paste0("SD for utility '", nm, "' not found"))
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
+  
+  u_Healthy          <- getu("u_Healthy")
+  u_IMD              <- getu("u_IMD")
+  u_Scarring         <- getu("u_Scarring")
+  u_Single_Amput     <- getu("u_Single_Amput")
+  u_Multiple_Amput   <- getu("u_Multiple_Amput")
+  u_Neuro_Disability <- getu("u_Neuro_Disability")
+  u_Hearing_Loss     <- getu("u_Hearing_Loss")
+  u_Renal_Failure    <- getu("u_Renal_Failure")
+  u_Seizure          <- getu("u_Seizure")
+  u_Paralysis        <- getu("u_Paralysis")
+  u_Dead             <- getu("u_Dead")
+  
+  # Validate utilities
+  util_values <- c(u_Healthy, u_IMD, u_Scarring, u_Single_Amput, u_Multiple_Amput,
+                   u_Neuro_Disability, u_Hearing_Loss, u_Renal_Failure, u_Seizure, 
+                   u_Paralysis, u_Dead)
+  if (any(util_values < 0 | util_values > 1, na.rm = TRUE)) {
+    log_error("All utility values must be between 0 and 1")
+  }
+  
+  # Read SD (NA for fixed values like u_Healthy and u_Dead)
+  sd_u_Healthy          <- get_sd_u("u_Healthy")
+  sd_u_IMD              <- get_sd_u("u_IMD")
+  sd_u_Scarring         <- get_sd_u("u_Scarring")
+  sd_u_Single_Amput     <- get_sd_u("u_Single_Amput")
+  sd_u_Multiple_Amput   <- get_sd_u("u_Multiple_Amput")
+  sd_u_Neuro_Disability <- get_sd_u("u_Neuro_Disability")
+  sd_u_Hearing_Loss     <- get_sd_u("u_Hearing_Loss")
+  sd_u_Renal_Failure    <- get_sd_u("u_Renal_Failure")
+  sd_u_Seizure          <- get_sd_u("u_Seizure")
+  sd_u_Paralysis        <- get_sd_u("u_Paralysis")
+  sd_u_Dead             <- get_sd_u("u_Dead")
+  
+  log_info("Utility parameters loaded")
+  
+  # ============================================================
+  # STEP 11: Vaccine Effectiveness
+  # ============================================================
+  
+  ve_df <- data_list[["vac_effect"]]
+  if (is.null(ve_df)) {
+    log_error("Sheet 'vac_effect' not found in Excel file")
+  }
+  
+  required_ve_cols <- c("Name", "Value", "sd", "duration")
+  missing_ve_cols <- setdiff(required_ve_cols, names(ve_df))
+  if (length(missing_ve_cols) > 0) {
+    log_error(paste0("Missing required columns in 'vac_effect' sheet: ", 
+                     paste(missing_ve_cols, collapse = ", ")))
+  }
+  
   vaccine_names <- c("MenABCWY_for_SeroACWY", "MenABCWY_for_SeroB", "MenACWY", "MenC", "MenB")
   
+  # Check all vaccines present
+  missing_vaccines <- setdiff(vaccine_names, ve_df$Name)
+  if (length(missing_vaccines) > 0) {
+    log_error(paste0("Missing vaccines in 'vac_effect' sheet: ", 
+                     paste(missing_vaccines, collapse = ", ")))
+  }
+  
   ve_data <- tibble::tibble(
-    vaccine       = vaccine_names,
-    effectiveness = as.numeric(ve_df$Value[match(vaccine_names, ve_df$Name)]),
-    duration      = as.integer(ve_df$duration[match(vaccine_names, ve_df$Name)])
+    vaccine          = vaccine_names,
+    effectiveness    = as.numeric(ve_df$Value[match(vaccine_names, ve_df$Name)]),
+    sd_effectiveness = as.numeric(ve_df$sd[match(vaccine_names, ve_df$Name)]),
+    duration         = as.integer(ve_df$duration[match(vaccine_names, ve_df$Name)])
   )
   
-  # Replace any NAs with defaults
-  ve_data$effectiveness[is.na(ve_data$effectiveness)] <- c(0.85, 0.85, 0.85, 0.85, 0.75)[is.na(ve_data$effectiveness)]
-  ve_data$duration[is.na(ve_data$duration)] <- c(10, 5, 10, 10, 5)[is.na(ve_data$duration)]
+  # Check for NAs
+  if (any(is.na(ve_data$effectiveness))) {
+    log_error("NA values found in vaccine effectiveness")
+  }
+  if (any(is.na(ve_data$duration))) {
+    log_error("NA values found in vaccine duration")
+  }
   
+  # Calculate VE over time with linear waning
   ve_all <- calculate_all_ve(ve_data, n_cycles = nC)
   
   # Extract VE vectors and adjust by coverage
@@ -160,84 +533,150 @@ get_base_params <- function() {
   ve_MenC             <- ve_all$Effectiveness[ve_all$Vaccine == "MenC"]                  * cov_C
   ve_MenB             <- ve_all$Effectiveness[ve_all$Vaccine == "MenB"]                  * cov_B
   
-  ## ---- Costs (annual sequelae; infection cost vector) ----
-  getc <- function(nm, default, df = costs_tbl) {
-    if (is.null(df) || !all(c("Name", "Value") %in% names(df))) {
-      return(default)
-    }
-    v <- df$Value[df$Name == nm]
-    if (length(v) == 0) default else as.numeric(v[1])
-  }
+  log_info("Vaccine effectiveness parameters loaded")
   
-  c_Healthy        <- getc("c_Healthy", 0)
-  c_Scarring       <- getc("c_Scarring", 13617)
-  c_Single_Amput   <- getc("c_Single_Amput", 38187)
-  c_Multiple_Amput <- getc("c_Multiple_Amput", 66000)
-  c_Neuro_Disab    <- getc("c_Neuro_Disab", 15644)
-  c_Hearing_Loss   <- getc("c_Hearing_Loss", 25093)
-  c_Renal_Failure  <- getc("c_Renal_Failure", 18149)
-  c_Seizure        <- getc("c_Seizure", 13454)
-  c_Paralysis      <- getc("c_Paralysis", 10000)
-  c_Dead           <- getc("c_Dead", 0)
+  # ============================================================
+  # STEP 12: Build Complete Parameter List
+  # ============================================================
   
-  cost_imd <- data_list[["cost_IMD"]]
-  if (!is.null(cost_imd) && "cost" %in% names(cost_imd)) {
-    c_IMD_infection <- as.numeric(cost_imd$cost)
-  } else {
-    c_IMD_infection <- rep(0, nC)
-  }
-  
-  if (length(c_IMD_infection) < nC) {
-    c_IMD_infection <- rep(c_IMD_infection, length.out = nC)
-  }
-  
-  ## ---- Utilities ----
-  utab <- data_list[["utilities"]]
-  getu <- function(nm, default) {
-    if (is.null(utab) || !all(c("Name", "Value") %in% names(utab))) {
-      return(default)
-    }
-    v <- utab$Value[utab$Name == nm]
-    if (length(v) == 0) default else as.numeric(v[1])
-  }
-  
-  u_Healthy          <- getu("u_Healthy", 1.00)
-  u_IMD              <- getu("u_IMD",     0.91)
-  u_Scarring         <- getu("u_Scarring", 0.95)
-  u_Single_Amput     <- getu("u_Single_Amput", 0.70)
-  u_Multiple_Amput   <- getu("u_Multiple_Amput", 0.61)
-  u_Neuro_Disability <- getu("u_Neuro_Disability", 0.06)
-  u_Hearing_Loss     <- getu("u_Hearing_Loss", 0.72)
-  u_Renal_Failure    <- getu("u_Renal_Failure", 0.82)
-  u_Seizure          <- getu("u_Seizure", 0.83)
-  u_Paralysis        <- getu("u_Paralysis", 0.26)
-  u_Dead             <- getu("u_Dead", 0.00)
-  
-  ## ---- Build parameter list ----
   params <- list(
-    n_cycles = nC, cycle_length = cyc, d_c = dc, d_e = de,
-    coverage_ABCWY = cov_ABCWY, coverage_ACWY = cov_ACWY, coverage_C = cov_C, coverage_B = cov_B,
-    c_MenABCWY = c_MenABCWY, c_MenACWY = c_MenACWY, c_MenC = c_MenC, c_MenB = c_MenB, c_admin = c_admin,
-    p_B = p_B, p_C = p_C, p_W = p_W, p_Y = p_Y,
-    p_B_DeadIMD = p_B_CFR, p_C_DeadIMD = p_C_CFR, p_W_DeadIMD = p_W_CFR, p_Y_DeadIMD = p_Y_CFR,
-    p_bg_mort = p_bg, p_seq_overall = p_seq_overall, w_seq = w_seq,
-    ve_MenABCWY_forACWY = ve_MenABCWY_forACWY, ve_MenABCWY_forB = ve_MenABCWY_forB,
-    ve_MenACWY = ve_MenACWY, ve_MenC = ve_MenC, ve_MenB = ve_MenB,
-    c_IMD_infection = c_IMD_infection, c_Healthy = c_Healthy, c_Scarring = c_Scarring,
-    c_Single_Amput = c_Single_Amput, c_Multiple_Amput = c_Multiple_Amput, c_Neuro_Disab = c_Neuro_Disab,
-    c_Hearing_Loss = c_Hearing_Loss, c_Renal_Failure = c_Renal_Failure, c_Seizure = c_Seizure,
-    c_Paralysis = c_Paralysis, c_Dead = c_Dead,
-    u_Healthy = u_Healthy, u_IMD = u_IMD, u_Scarring = u_Scarring, u_Single_Amput = u_Single_Amput,
-    u_Multiple_Amput = u_Multiple_Amput, u_Neuro_Disability = u_Neuro_Disability,
-    u_Hearing_Loss = u_Hearing_Loss, u_Renal_Failure = u_Renal_Failure, u_Seizure = u_Seizure,
-    u_Paralysis = u_Paralysis, u_Dead = u_Dead,
+    # Model settings
+    n_cycles = nC, 
+    cycle_length = cyc, 
+    d_c = dc, 
+    d_e = de,
     perspective = perspective,
-    mult_p_B = 1.0, mult_p_C = 1.0, mult_p_W = 1.0, mult_p_Y = 1.0,
-    mult_cfr_B = 1.0, mult_cfr_C = 1.0, mult_cfr_W = 1.0, mult_cfr_Y = 1.0,
-    mult_bg_mort = 1.0, mult_c_IMD = 1.0,
-    ve_scale_B = 1.0, ve_scale_C = 1.0, ve_scale_W = 1.0, ve_scale_Y = 1.0
+    
+    # Coverage
+    coverage_ABCWY = cov_ABCWY, 
+    coverage_ACWY = cov_ACWY, 
+    coverage_C = cov_C, 
+    coverage_B = cov_B,
+    sd_coverage_ABCWY = sd_cov_ABCWY,
+    sd_coverage_ACWY = sd_cov_ACWY,
+    sd_coverage_C = sd_cov_C,
+    sd_coverage_B = sd_cov_B,
+    
+    # Vaccine costs
+    c_MenABCWY = c_MenABCWY, 
+    c_MenACWY = c_MenACWY, 
+    c_MenC = c_MenC, 
+    c_MenB = c_MenB,
+    sd_c_MenABCWY = sd_c_MenABCWY,
+    sd_c_MenACWY = sd_c_MenACWY,
+    sd_c_MenC = sd_c_MenC,
+    sd_c_MenB = sd_c_MenB,
+    
+    # Other costs
+    c_admin = c_admin,
+    sd_c_admin = sd_c_admin,
+    c_Healthy = c_Healthy,
+    sd_c_Healthy = sd_c_Healthy,
+    c_Scarring = c_Scarring,
+    sd_c_Scarring = sd_c_Scarring,
+    c_Single_Amput = c_Single_Amput,
+    sd_c_Single_Amput = sd_c_Single_Amput,
+    c_Multiple_Amput = c_Multiple_Amput,
+    sd_c_Multiple_Amput = sd_c_Multiple_Amput,
+    c_Neuro_Disab = c_Neuro_Disab,
+    sd_c_Neuro_Disab = sd_c_Neuro_Disab,
+    c_Hearing_Loss = c_Hearing_Loss,
+    sd_c_Hearing_Loss = sd_c_Hearing_Loss,
+    c_Renal_Failure = c_Renal_Failure,
+    sd_c_Renal_Failure = sd_c_Renal_Failure,
+    c_Seizure = c_Seizure,
+    sd_c_Seizure = sd_c_Seizure,
+    c_Paralysis = c_Paralysis,
+    sd_c_Paralysis = sd_c_Paralysis,
+    c_Dead = c_Dead,
+    sd_c_Dead = sd_c_Dead,
+    
+    # Infection costs (time-varying)
+    c_IMD_infection = c_IMD_infection,
+    sd_c_IMD_infection = sd_c_IMD_infection,
+    
+    # Infection probabilities (time-varying)
+    p_B = p_B,
+    sd_p_B = sd_p_B,
+    p_C = p_C,
+    sd_p_C = sd_p_C,
+    p_W = p_W,
+    sd_p_W = sd_p_W,
+    p_Y = p_Y,
+    sd_p_Y = sd_p_Y,
+    
+    # Case fatality rates (time-varying)
+    p_B_DeadIMD = p_B_CFR,
+    sd_p_B_DeadIMD = sd_p_B_CFR,
+    p_C_DeadIMD = p_C_CFR,
+    sd_p_C_DeadIMD = sd_p_C_CFR,
+    p_W_DeadIMD = p_W_CFR,
+    sd_p_W_DeadIMD = sd_p_W_CFR,
+    p_Y_DeadIMD = p_Y_CFR,
+    sd_p_Y_DeadIMD = sd_p_Y_CFR,
+    
+    # Background mortality (time-varying)
+    p_bg_mort = p_bg,
+    sd_p_bg_mort = sd_p_bg,
+    
+    # Sequelae
+    p_seq_overall = p_seq_overall,
+    sd_p_seq_overall = sd_p_seq_overall,
+    w_seq = w_seq,
+    sd_w_seq = sd_shares,
+    
+    # Utilities
+    u_Healthy = u_Healthy,
+    sd_u_Healthy = sd_u_Healthy,
+    u_IMD = u_IMD,
+    sd_u_IMD = sd_u_IMD,
+    u_Scarring = u_Scarring,
+    sd_u_Scarring = sd_u_Scarring,
+    u_Single_Amput = u_Single_Amput,
+    sd_u_Single_Amput = sd_u_Single_Amput,
+    u_Multiple_Amput = u_Multiple_Amput,
+    sd_u_Multiple_Amput = sd_u_Multiple_Amput,
+    u_Neuro_Disability = u_Neuro_Disability,
+    sd_u_Neuro_Disability = sd_u_Neuro_Disability,
+    u_Hearing_Loss = u_Hearing_Loss,
+    sd_u_Hearing_Loss = sd_u_Hearing_Loss,
+    u_Renal_Failure = u_Renal_Failure,
+    sd_u_Renal_Failure = sd_u_Renal_Failure,
+    u_Seizure = u_Seizure,
+    sd_u_Seizure = sd_u_Seizure,
+    u_Paralysis = u_Paralysis,
+    sd_u_Paralysis = sd_u_Paralysis,
+    u_Dead = u_Dead,
+    sd_u_Dead = sd_u_Dead,
+    
+    # Vaccine effectiveness (vectors)
+    ve_MenABCWY_forACWY = ve_MenABCWY_forACWY,
+    ve_MenABCWY_forB = ve_MenABCWY_forB,
+    ve_MenACWY = ve_MenACWY,
+    ve_MenC = ve_MenC,
+    ve_MenB = ve_MenB,
+    ve_data = ve_data,  # Store for PSA recalculation
+    
+    # Multipliers for sensitivity analysis (OWSA)
+    mult_p_B = 1.0,
+    mult_p_C = 1.0,
+    mult_p_W = 1.0,
+    mult_p_Y = 1.0,
+    mult_cfr_B = 1.0,
+    mult_cfr_C = 1.0,
+    mult_cfr_W = 1.0,
+    mult_cfr_Y = 1.0,
+    mult_bg_mort = 1.0,
+    mult_c_IMD = 1.0,
+    ve_scale_B = 1.0,
+    ve_scale_C = 1.0,
+    ve_scale_W = 1.0,
+    ve_scale_Y = 1.0
   )
   
-  log_info("Base parameters loaded successfully")
+  log_info("Base parameters loaded successfully (with SDs from Excel)")
+  log_info(paste("  - Parameters with valid SD will vary in PSA"))
+  log_info(paste("  - Parameters without SD or SD=0/NA will remain FIXED in PSA"))
+  
   return(params)
 }
