@@ -1,7 +1,7 @@
+## ======================
+## 7) OWSA Functions 
+## ======================
 
-## ======================
-## 7) OWSA Functions (CORRECTED)
-## ======================
 # FUNCTION 1: Define parameter ranges for the OWSA.
 create_owsa_ranges <- function(params) {
   rng <- list()
@@ -45,9 +45,31 @@ owsa_model_function <- function(param_name, param_value, all_params) {
   return(data.frame(Strategy = names(costs), Cost = costs, QALYs = qalys))
 }
 
-# Execute OWSA with incremental outcomes
-execute_owsa <- function(params_basecase, comparator = "MenC", nsamp = 25) {
+# FUNCTION 3: Execute OWSA with incremental outcomes
+# Now supports multiple comparators and strategy selection
+execute_owsa <- function(params_basecase, 
+                         comparators = "MenC",  # Can be vector: c("MenC", "MenACWY")
+                         strategies_to_test = NULL,  # NULL = all strategies except comparators
+                         nsamp = 25) {
+  
   log_info("Running One-Way Sensitivity Analysis (OWSA)...")
+  log_info(paste("Comparators:", paste(comparators, collapse = ", ")))
+  
+  # Determine which strategies to test
+  all_strats <- v_strats
+  
+  if (is.null(strategies_to_test)) {
+    # Test all strategies except comparators
+    strategies_to_test <- setdiff(all_strats, comparators)
+    log_info(paste("Testing all non-comparator strategies:", paste(strategies_to_test, collapse = ", ")))
+  } else {
+    # Validate user-specified strategies
+    invalid_strats <- setdiff(strategies_to_test, all_strats)
+    if (length(invalid_strats) > 0) {
+      log_error(paste("Invalid strategies specified:", paste(invalid_strats, collapse = ", ")))
+    }
+    log_info(paste("Testing user-specified strategies:", paste(strategies_to_test, collapse = ", ")))
+  }
   
   ranges_df <- create_owsa_ranges(params_basecase)
   
@@ -72,284 +94,301 @@ execute_owsa <- function(params_basecase, comparator = "MenC", nsamp = 25) {
     full_owsa_results[[param_name]] <- list(min = res_min, max = res_max)
   }
   
-  # Format output with INCREMENTAL values vs comparator
-  owsa_cost_df <- do.call(rbind, lapply(names(full_owsa_results), function(name) {
-    min_data <- full_owsa_results[[name]]$min
-    max_data <- full_owsa_results[[name]]$max
-    
-    # Get comparator costs
-    comp_cost_min <- min_data$Cost[min_data$Strategy == comparator]
-    comp_cost_max <- max_data$Cost[max_data$Strategy == comparator]
-    
-    data.frame(
-      pars = name,
-      par_value_min = ranges_df$min[ranges_df$pars == name],
-      par_value_max = ranges_df$max[ranges_df$pars == name],
-      strategy = min_data$Strategy,
-      Cost_min = min_data$Cost,
-      Cost_max = max_data$Cost,
-      # INCREMENTAL COSTS
-      Inc_Cost_min = min_data$Cost - comp_cost_min,
-      Inc_Cost_max = max_data$Cost - comp_cost_max,
-      stringsAsFactors = FALSE
-    )
-  }))
+  # Format output with INCREMENTAL values vs EACH comparator
+  owsa_results_by_comparator <- list()
   
-  owsa_qaly_df <- do.call(rbind, lapply(names(full_owsa_results), function(name) {
-    min_data <- full_owsa_results[[name]]$min
-    max_data <- full_owsa_results[[name]]$max
+  for (comp in comparators) {
     
-    # Get comparator QALYs
-    comp_qaly_min <- min_data$QALYs[min_data$Strategy == comparator]
-    comp_qaly_max <- max_data$QALYs[max_data$Strategy == comparator]
+    owsa_cost_df <- do.call(rbind, lapply(names(full_owsa_results), function(name) {
+      min_data <- full_owsa_results[[name]]$min
+      max_data <- full_owsa_results[[name]]$max
+      
+      # Get comparator costs
+      comp_cost_min <- min_data$Cost[min_data$Strategy == comp]
+      comp_cost_max <- max_data$Cost[max_data$Strategy == comp]
+      
+      # Only include tested strategies
+      min_data_filtered <- min_data[min_data$Strategy %in% strategies_to_test, ]
+      max_data_filtered <- max_data[max_data$Strategy %in% strategies_to_test, ]
+      
+      if (nrow(min_data_filtered) == 0) return(NULL)
+      
+      data.frame(
+        pars = name,
+        par_value_min = ranges_df$min[ranges_df$pars == name],
+        par_value_max = ranges_df$max[ranges_df$pars == name],
+        strategy = min_data_filtered$Strategy,
+        Cost_min = min_data_filtered$Cost,
+        Cost_max = max_data_filtered$Cost,
+        # INCREMENTAL COSTS
+        Inc_Cost_min = min_data_filtered$Cost - comp_cost_min,
+        Inc_Cost_max = max_data_filtered$Cost - comp_cost_max,
+        stringsAsFactors = FALSE
+      )
+    }))
     
-    data.frame(
-      pars = name,
-      par_value_min = ranges_df$min[ranges_df$pars == name],
-      par_value_max = ranges_df$max[ranges_df$pars == name],
-      strategy = min_data$Strategy,
-      QALYs_min = min_data$QALYs,
-      QALYs_max = max_data$QALYs,
-      # INCREMENTAL QALYs
-      Inc_QALYs_min = min_data$QALYs - comp_qaly_min,
-      Inc_QALYs_max = max_data$QALYs - comp_qaly_max,
-      stringsAsFactors = FALSE
+    owsa_qaly_df <- do.call(rbind, lapply(names(full_owsa_results), function(name) {
+      min_data <- full_owsa_results[[name]]$min
+      max_data <- full_owsa_results[[name]]$max
+      
+      # Get comparator QALYs
+      comp_qaly_min <- min_data$QALYs[min_data$Strategy == comp]
+      comp_qaly_max <- max_data$QALYs[max_data$Strategy == comp]
+      
+      # Only include tested strategies
+      min_data_filtered <- min_data[min_data$Strategy %in% strategies_to_test, ]
+      max_data_filtered <- max_data[max_data$Strategy %in% strategies_to_test, ]
+      
+      if (nrow(min_data_filtered) == 0) return(NULL)
+      
+      data.frame(
+        pars = name,
+        par_value_min = ranges_df$min[ranges_df$pars == name],
+        par_value_max = ranges_df$max[ranges_df$pars == name],
+        strategy = min_data_filtered$Strategy,
+        QALYs_min = min_data_filtered$QALYs,
+        QALYs_max = max_data_filtered$QALYs,
+        # INCREMENTAL QALYs
+        Inc_QALYs_min = min_data_filtered$QALYs - comp_qaly_min,
+        Inc_QALYs_max = max_data_filtered$QALYs - comp_qaly_max,
+        stringsAsFactors = FALSE
+      )
+    }))
+    
+    owsa_results_by_comparator[[comp]] <- list(
+      owsa_Cost = owsa_cost_df,
+      owsa_QALYs = owsa_qaly_df,
+      comparator = comp
     )
-  }))
+  }
   
   log_info("OWSA complete")
   
-  return(list(
-    owsa_Cost = owsa_cost_df,
-    owsa_QALYs = owsa_qaly_df,
-    comparator = comparator
-  ))
+  # If single comparator, return old format for compatibility
+  if (length(comparators) == 1) {
+    return(owsa_results_by_comparator[[1]])
+  }
+  
+  # Otherwise return list of results by comparator
+  return(owsa_results_by_comparator)
 }
 
-# Create OWSA tornado plots with INCREMENTAL values and NMB option
-create_owsa_plots <- function(owsa_out, det_results, strategies = v_strats, 
+# FUNCTION 4: Create OWSA tornado plots with IMPROVED TITLES
+create_owsa_plots <- function(owsa_out, det_results, 
+                              strategies = NULL,  # NULL = all strategies in owsa_out
                               threshold = 0.05, top_n = 10, 
-                              wtp = 50000, plot_type = "incremental") {
+                              wtp = 50000, plot_type = "incremental",
+                              perspective = "healthcare") {
+  
   log_info("Generating OWSA tornado plots...")
   
-  comparator <- owsa_out$comparator
+  # Handle both old format (single comparator) and new format (multiple comparators)
+  if ("comparator" %in% names(owsa_out)) {
+    # Old format - single comparator
+    owsa_list <- list(owsa_out)
+    names(owsa_list) <- owsa_out$comparator
+  } else {
+    # New format - multiple comparators
+    owsa_list <- owsa_out
+  }
   
-  for (strategy_to_plot in strategies) {
+  # Loop through each comparator
+  for (comp_name in names(owsa_list)) {
     
-    # Skip if plotting the comparator itself (incremental values would be zero)
-    if (strategy_to_plot == comparator && plot_type == "incremental") {
-      log_info(paste("Skipping tornado plot for comparator:", strategy_to_plot))
-      next
+    owsa_comp <- owsa_list[[comp_name]]
+    comparator <- owsa_comp$comparator
+    
+    # Get strategies to plot
+    if (is.null(strategies)) {
+      strategies_to_plot <- unique(owsa_comp$owsa_Cost$strategy)
+    } else {
+      strategies_to_plot <- intersect(strategies, unique(owsa_comp$owsa_Cost$strategy))
     }
     
-    # Base values for the selected strategy
-    base_cost <- det_results$table$Cost[det_results$table$Strategy == strategy_to_plot]
-    base_qaly <- det_results$table$QALYs[det_results$table$Strategy == strategy_to_plot]
+    log_info(paste("Creating plots for comparator:", comparator))
     
-    # Base values for comparator
-    comp_cost <- det_results$table$Cost[det_results$table$Strategy == comparator]
-    comp_qaly <- det_results$table$QALYs[det_results$table$Strategy == comparator]
-    
-    # Incremental base values
-    base_inc_cost <- base_cost - comp_cost
-    base_inc_qaly <- base_qaly - comp_qaly
-    base_icer <- ifelse(base_inc_qaly != 0, base_inc_cost / base_inc_qaly, NA)
-    base_nmb <- base_inc_qaly * wtp - base_inc_cost
-    
-    ## --- OPTION 1: INCREMENTAL COST TORNADO ---
-    if (plot_type %in% c("incremental", "both")) {
-      owsa_cost_data <- owsa_out$owsa_Cost %>%
-        dplyr::filter(strategy == strategy_to_plot) %>%
-        dplyr::mutate(range = abs(Inc_Cost_max - Inc_Cost_min))
+    for (strategy_to_plot in strategies_to_plot) {
       
-      max_range_cost <- max(owsa_cost_data$range, na.rm = TRUE)
+      # Skip if strategy is the comparator itself
+      if (strategy_to_plot == comparator) {
+        log_info(paste("  Skipping", strategy_to_plot, "(is the comparator)"))
+        next
+      }
       
-      owsa_cost_data <- owsa_cost_data %>%
-        dplyr::filter(range >= threshold * max_range_cost) %>%
-        dplyr::arrange(desc(range)) %>%
-        dplyr::slice_head(n = top_n) %>%
-        dplyr::mutate(pars = factor(pars, levels = pars))
+      log_info(paste("  Plotting:", strategy_to_plot, "vs", comparator))
       
-      p_owsa_inc_cost <- ggplot(owsa_cost_data, aes(y = pars)) +
-        geom_segment(
-          aes(x = Inc_Cost_min, xend = Inc_Cost_max, yend = pars),
-          color = "#0072B2",
-          size = 4,
-          alpha = 0.8
-        ) +
-        geom_vline(
-          xintercept = base_inc_cost,
-          linetype = "dashed",
-          color = "red",
-          size = 1
-        ) +
-        geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
-        geom_point(aes(x = base_inc_cost), color = "red", size = 3) +
-        scale_y_discrete(limits = rev) +
-        labs(
-          title = paste0("OWSA: Incremental Cost\n", strategy_to_plot, " vs ", comparator),
-          x = "Incremental Cost (CAD)",
-          y = "Parameter"
-        ) +
-        theme_minimal(base_size = 12)
+      # Base values for the selected strategy
+      base_cost <- det_results$table$Cost[det_results$table$Strategy == strategy_to_plot]
+      base_qaly <- det_results$table$QALYs[det_results$table$Strategy == strategy_to_plot]
       
-      print(p_owsa_inc_cost)
-      filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_cost_", strategy_to_plot, "_vs_", comparator, ".png"))
-      try(ggsave(filename, p_owsa_inc_cost, width = 8, height = 7, dpi = 300))
+      # Base values for comparator
+      comp_cost <- det_results$table$Cost[det_results$table$Strategy == comparator]
+      comp_qaly <- det_results$table$QALYs[det_results$table$Strategy == comparator]
       
-      ## --- INCREMENTAL QALYs TORNADO ---
-      owsa_qaly_data <- owsa_out$owsa_QALYs %>%
-        dplyr::filter(strategy == strategy_to_plot) %>%
-        dplyr::mutate(range = abs(Inc_QALYs_max - Inc_QALYs_min))
+      # Incremental base values
+      base_inc_cost <- base_cost - comp_cost
+      base_inc_qaly <- base_qaly - comp_qaly
+      base_icer <- ifelse(base_inc_qaly != 0, base_inc_cost / base_inc_qaly, NA)
+      base_nmb <- base_inc_qaly * wtp - base_inc_cost
       
-      max_range_qaly <- max(owsa_qaly_data$range, na.rm = TRUE)
-      
-      owsa_qaly_data <- owsa_qaly_data %>%
-        dplyr::filter(range >= threshold * max_range_qaly) %>%
-        dplyr::arrange(desc(range)) %>%
-        dplyr::slice_head(n = top_n) %>%
-        dplyr::mutate(pars = factor(pars, levels = pars))
-      
-      p_owsa_inc_qaly <- ggplot(owsa_qaly_data, aes(y = pars)) +
-        geom_segment(
-          aes(x = Inc_QALYs_min, xend = Inc_QALYs_max, yend = pars),
-          color = "#009E73",
-          size = 4,
-          alpha = 0.8
-        ) +
-        geom_vline(
-          xintercept = base_inc_qaly,
-          linetype = "dashed",
-          color = "red",
-          size = 1
-        ) +
-        geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
-        geom_point(aes(x = base_inc_qaly), color = "red", size = 3) +
-        scale_y_discrete(limits = rev) +
-        labs(
-          title = paste0("OWSA: Incremental QALYs\n", strategy_to_plot, " vs ", comparator),
-          x = "Incremental QALYs",
-          y = "Parameter"
-        ) +
-        theme_minimal(base_size = 12)
-      
-      print(p_owsa_inc_qaly)
-      filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_qalys_", strategy_to_plot, "_vs_", comparator, ".png"))
-      try(ggsave(filename, p_owsa_inc_qaly, width = 8, height = 7, dpi = 300))
-    }
-    
-    ## --- OPTION 2: NET MONETARY BENEFIT (NMB) TORNADO ---
-    if (plot_type %in% c("nmb", "both")) {
-      owsa_nmb_data <- owsa_out$owsa_Cost %>%
-        dplyr::filter(strategy == strategy_to_plot) %>%
-        dplyr::left_join(
-          owsa_out$owsa_QALYs %>% 
-            dplyr::filter(strategy == strategy_to_plot) %>%
-            dplyr::select(pars, Inc_QALYs_min, Inc_QALYs_max),
-          by = "pars"
-        ) %>%
-        dplyr::mutate(
-          NMB_min = Inc_QALYs_min * wtp - Inc_Cost_min,
-          NMB_max = Inc_QALYs_max * wtp - Inc_Cost_max,
-          range = abs(NMB_max - NMB_min)
-        )
-      
-      max_range_nmb <- max(owsa_nmb_data$range, na.rm = TRUE)
-      
-      owsa_nmb_data <- owsa_nmb_data %>%
-        dplyr::filter(range >= threshold * max_range_nmb) %>%
-        dplyr::arrange(desc(range)) %>%
-        dplyr::slice_head(n = top_n) %>%
-        dplyr::mutate(pars = factor(pars, levels = pars))
-      
-      p_owsa_nmb <- ggplot(owsa_nmb_data, aes(y = pars)) +
-        geom_segment(
-          aes(x = NMB_min, xend = NMB_max, yend = pars),
-          color = "#D55E00",
-          size = 4,
-          alpha = 0.8
-        ) +
-        geom_vline(
-          xintercept = base_nmb,
-          linetype = "dashed",
-          color = "red",
-          size = 1
-        ) +
-        geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
-        geom_point(aes(x = base_nmb), color = "red", size = 3) +
-        scale_y_discrete(limits = rev) +
-        labs(
-          title = paste0("OWSA: Net Monetary Benefit (WTP = $", 
-                         format(wtp, big.mark = ","), ")\n",
-                         strategy_to_plot, " vs ", comparator),
-          x = "Net Monetary Benefit (CAD)",
-          y = "Parameter",
-          caption = "NMB > 0 favors intervention"
-        ) +
-        theme_minimal(base_size = 12)
-      
-      print(p_owsa_nmb)
-      filename <- file.path(OUT_FIG, paste0("owsa_tornado_nmb_", strategy_to_plot, "_vs_", comparator, ".png"))
-      try(ggsave(filename, p_owsa_nmb, width = 8, height = 7, dpi = 300))
-    }
-    
-    ## --- OPTION 3: ICER TORNADO (Advanced) ---
-    if (plot_type == "icer") {
-      owsa_icer_data <- owsa_out$owsa_Cost %>%
-        dplyr::filter(strategy == strategy_to_plot) %>%
-        dplyr::left_join(
-          owsa_out$owsa_QALYs %>% 
-            dplyr::filter(strategy == strategy_to_plot) %>%
-            dplyr::select(pars, Inc_QALYs_min, Inc_QALYs_max),
-          by = "pars"
-        ) %>%
-        dplyr::mutate(
-          ICER_min = ifelse(Inc_QALYs_min != 0, Inc_Cost_min / Inc_QALYs_min, NA),
-          ICER_max = ifelse(Inc_QALYs_max != 0, Inc_Cost_max / Inc_QALYs_max, NA),
-          range = abs(ICER_max - ICER_min)
-        ) %>%
-        dplyr::filter(!is.na(ICER_min) & !is.na(ICER_max) & is.finite(ICER_min) & is.finite(ICER_max))
-      
-      if (nrow(owsa_icer_data) > 0) {
-        max_range_icer <- max(owsa_icer_data$range, na.rm = TRUE)
+      ## --- OPTION 1: INCREMENTAL COST TORNADO ---
+      if (plot_type %in% c("incremental", "both")) {
+        owsa_cost_data <- owsa_comp$owsa_Cost %>%
+          dplyr::filter(strategy == strategy_to_plot) %>%
+          dplyr::mutate(range = abs(Inc_Cost_max - Inc_Cost_min))
         
-        owsa_icer_data <- owsa_icer_data %>%
-          dplyr::filter(range >= threshold * max_range_icer) %>%
+        max_range_cost <- max(owsa_cost_data$range, na.rm = TRUE)
+        
+        owsa_cost_data <- owsa_cost_data %>%
+          dplyr::filter(range >= threshold * max_range_cost) %>%
           dplyr::arrange(desc(range)) %>%
           dplyr::slice_head(n = top_n) %>%
           dplyr::mutate(pars = factor(pars, levels = pars))
         
-        p_owsa_icer <- ggplot(owsa_icer_data, aes(y = pars)) +
+        p_owsa_inc_cost <- ggplot(owsa_cost_data, aes(y = pars)) +
           geom_segment(
-            aes(x = ICER_min, xend = ICER_max, yend = pars),
-            color = "#CC79A7",
+            aes(x = Inc_Cost_min, xend = Inc_Cost_max, yend = pars),
+            color = "#0072B2",
             size = 4,
             alpha = 0.8
           ) +
           geom_vline(
-            xintercept = base_icer,
+            xintercept = base_inc_cost,
             linetype = "dashed",
             color = "red",
             size = 1
           ) +
-          geom_vline(xintercept = wtp, linetype = "dotted", color = "blue", size = 1) +
-          geom_point(aes(x = base_icer), color = "red", size = 3) +
+          geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+          geom_point(aes(x = base_inc_cost), color = "red", size = 3) +
           scale_y_discrete(limits = rev) +
           scale_x_continuous(labels = scales::comma) +
           labs(
-            title = paste0("OWSA: ICER\n", strategy_to_plot, " vs ", comparator),
-            x = "ICER (CAD per QALY)",
+            title = paste0("OWSA: Incremental Cost (", perspective, " perspective)"),
+            subtitle = paste0(strategy_to_plot, " vs ", comparator),
+            x = "Incremental Cost (CAD)",
             y = "Parameter",
-            caption = paste0("Blue line = WTP threshold ($", format(wtp, big.mark = ","), "/QALY)")
+            caption = paste0("Base case: CAD ", scales::comma(round(base_inc_cost)))
           ) +
-          theme_minimal(base_size = 12)
+          theme_minimal(base_size = 12) +
+          theme(
+            plot.title = element_text(face = "bold", size = 14),
+            plot.subtitle = element_text(size = 12, color = "gray30")
+          )
         
-        print(p_owsa_icer)
-        filename <- file.path(OUT_FIG, paste0("owsa_tornado_icer_", strategy_to_plot, "_vs_", comparator, ".png"))
-        try(ggsave(filename, p_owsa_icer, width = 8, height = 7, dpi = 300))
+        print(p_owsa_inc_cost)
+        filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_cost_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        try(ggsave(filename, p_owsa_inc_cost, width = 8, height = 7, dpi = 300))
+        
+        ## --- INCREMENTAL QALYs TORNADO ---
+        owsa_qaly_data <- owsa_comp$owsa_QALYs %>%
+          dplyr::filter(strategy == strategy_to_plot) %>%
+          dplyr::mutate(range = abs(Inc_QALYs_max - Inc_QALYs_min))
+        
+        max_range_qaly <- max(owsa_qaly_data$range, na.rm = TRUE)
+        
+        owsa_qaly_data <- owsa_qaly_data %>%
+          dplyr::filter(range >= threshold * max_range_qaly) %>%
+          dplyr::arrange(desc(range)) %>%
+          dplyr::slice_head(n = top_n) %>%
+          dplyr::mutate(pars = factor(pars, levels = pars))
+        
+        p_owsa_inc_qaly <- ggplot(owsa_qaly_data, aes(y = pars)) +
+          geom_segment(
+            aes(x = Inc_QALYs_min, xend = Inc_QALYs_max, yend = pars),
+            color = "#009E73",
+            size = 4,
+            alpha = 0.8
+          ) +
+          geom_vline(
+            xintercept = base_inc_qaly,
+            linetype = "dashed",
+            color = "red",
+            size = 1
+          ) +
+          geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+          geom_point(aes(x = base_inc_qaly), color = "red", size = 3) +
+          scale_y_discrete(limits = rev) +
+          scale_x_continuous(labels = scales::comma) +
+          labs(
+            title = paste0("OWSA: Incremental QALYs (", perspective, " perspective)"),
+            subtitle = paste0(strategy_to_plot, " vs ", comparator),
+            x = "Incremental QALYs",
+            y = "Parameter",
+            caption = paste0("Base case: ", round(base_inc_qaly, 2), " QALYs")
+          ) +
+          theme_minimal(base_size = 12) +
+          theme(
+            plot.title = element_text(face = "bold", size = 14),
+            plot.subtitle = element_text(size = 12, color = "gray30")
+          )
+        
+        print(p_owsa_inc_qaly)
+        filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_qalys_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        try(ggsave(filename, p_owsa_inc_qaly, width = 8, height = 7, dpi = 300))
       }
+      
+      ## --- OPTION 2: NET MONETARY BENEFIT (NMB) TORNADO ---
+      if (plot_type %in% c("nmb", "both")) {
+        owsa_nmb_data <- owsa_comp$owsa_Cost %>%
+          dplyr::filter(strategy == strategy_to_plot) %>%
+          dplyr::left_join(
+            owsa_comp$owsa_QALYs %>% 
+              dplyr::filter(strategy == strategy_to_plot) %>%
+              dplyr::select(pars, Inc_QALYs_min, Inc_QALYs_max),
+            by = "pars"
+          ) %>%
+          dplyr::mutate(
+            NMB_min = Inc_QALYs_min * wtp - Inc_Cost_min,
+            NMB_max = Inc_QALYs_max * wtp - Inc_Cost_max,
+            range = abs(NMB_max - NMB_min)
+          )
+        
+        max_range_nmb <- max(owsa_nmb_data$range, na.rm = TRUE)
+        
+        owsa_nmb_data <- owsa_nmb_data %>%
+          dplyr::filter(range >= threshold * max_range_nmb) %>%
+          dplyr::arrange(desc(range)) %>%
+          dplyr::slice_head(n = top_n) %>%
+          dplyr::mutate(pars = factor(pars, levels = pars))
+        
+        p_owsa_nmb <- ggplot(owsa_nmb_data, aes(y = pars)) +
+          geom_segment(
+            aes(x = NMB_min, xend = NMB_max, yend = pars),
+            color = "#D55E00",
+            size = 4,
+            alpha = 0.8
+          ) +
+          geom_vline(
+            xintercept = base_nmb,
+            linetype = "dashed",
+            color = "red",
+            size = 1
+          ) +
+          geom_vline(xintercept = 0, linetype = "solid", color = "black", size = 0.5) +
+          geom_point(aes(x = base_nmb), color = "red", size = 3) +
+          scale_y_discrete(limits = rev) +
+          scale_x_continuous(labels = scales::comma) +
+          labs(
+            title = paste0("OWSA: Net Monetary Benefit (", perspective, " perspective)"),
+            subtitle = paste0(strategy_to_plot, " vs ", comparator, " | WTP = CAD ", format(wtp, big.mark = ",")),
+            x = "Net Monetary Benefit (CAD)",
+            y = "Parameter",
+            caption = paste0("Base case: CAD ", scales::comma(round(base_nmb)), " | NMB > 0 favors ", strategy_to_plot)
+          ) +
+          theme_minimal(base_size = 12) +
+          theme(
+            plot.title = element_text(face = "bold", size = 14),
+            plot.subtitle = element_text(size = 12, color = "gray30")
+          )
+        
+        print(p_owsa_nmb)
+        filename <- file.path(OUT_FIG, paste0("owsa_tornado_nmb_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        try(ggsave(filename, p_owsa_nmb, width = 8, height = 7, dpi = 300))
+      }
+      
+      log_info(paste("  Completed plots for:", strategy_to_plot))
     }
-    
-    log_info(paste("OWSA plots created for strategy:", strategy_to_plot))
   }
+  
+  log_info("All OWSA tornado plots created")
 }
