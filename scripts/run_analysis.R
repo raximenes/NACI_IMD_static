@@ -75,7 +75,7 @@ start_time <- Sys.time()
 
 # Analysis settings
 COHORT_SIZE <- 100L           # Number of individuals in the cohort
-N_SIMULATIONS <- 10L       # Number of PSA simulations
+N_SIMULATIONS <- 100L       # Number of PSA simulations
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
 ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
 
@@ -84,7 +84,7 @@ REUSE_PSA_SAMPLES <- TRUE   # Set to TRUE to reuse existing PSA samples (if avai
 # Set to FALSE to generate new PSA samples
 
 # OWSA Configuration - EDIT HERE
-owsa_comparators <- c("all")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
+owsa_comparators <- c("MenC")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
 owsa_strategies <- NULL  # NULL = all except comparators, or specify: c("MenACWY", "MenABCWY")
 
 # Visualization options
@@ -381,7 +381,7 @@ for (current_perspective in perspectives_to_run) {
       owsa_out <- NULL
       message("\n[INFO] OWSA plots skipped (CREATE_OWSA_PLOTS = FALSE)")
     }
-    
+
     # ============================================================
     # SAVE RESULTS
     # ============================================================
@@ -391,14 +391,92 @@ for (current_perspective in perspectives_to_run) {
     # Add perspective suffix to filenames
     suffix <- paste0("_", current_perspective)
     
-    readr::write_csv(det$table, file.path(OUT_TAB, paste0("deterministic_results", suffix, ".csv")))
-    readr::write_csv(as.data.frame(det$icers), file.path(OUT_TAB, paste0("deterministic_icers", suffix, ".csv")))
-    readr::write_csv(det$incremental, file.path(OUT_TAB, paste0("deterministic_incremental_epi", suffix, ".csv")))
-    readr::write_csv(psa_results, file.path(OUT_TAB, paste0("psa_long_results", suffix, ".csv")))
+    # Save deterministic results table
+    tryCatch({
+      message("[DEBUG] Saving deterministic results table...")
+      readr::write_csv(det$table, file.path(OUT_TAB, paste0("deterministic_results", suffix, ".csv")))
+      message("[DEBUG] ✓ Deterministic table saved")
+    }, error = function(e) {
+      message("[ERROR] Failed to save deterministic table: ", e$message)
+    })
     
+    # Save ICERs
+    tryCatch({
+      message("[DEBUG] Saving ICERs...")
+      icers_df <- as.data.frame(det$icers, stringsAsFactors = FALSE)
+      readr::write_csv(icers_df, file.path(OUT_TAB, paste0("deterministic_icers", suffix, ".csv")))
+      message("[DEBUG] ✓ ICERs saved")
+    }, error = function(e) {
+      message("[ERROR] Failed to save ICERs: ", e$message)
+      message("[INFO] Trying alternative ICER save method...")
+      tryCatch({
+        icers_df <- data.frame(
+          Strategy = as.character(det$icers$Strategy),
+          Cost = as.numeric(det$icers$Cost),
+          Effect = as.numeric(det$icers$Effect),
+          Inc_Cost = as.numeric(det$icers$Inc_Cost),
+          Inc_Effect = as.numeric(det$icers$Inc_Effect),
+          ICER = as.numeric(det$icers$ICER),
+          Status = as.character(det$icers$Status),
+          stringsAsFactors = FALSE
+        )
+        readr::write_csv(icers_df, file.path(OUT_TAB, paste0("deterministic_icers", suffix, ".csv")))
+        message("[DEBUG] ✓ ICERs saved (alternative method)")
+      }, error = function(e2) {
+        message("[ERROR] Alternative ICER save also failed: ", e2$message)
+      })
+    })
+    
+    # Save incremental epidemiological results
+    tryCatch({
+      message("[DEBUG] Saving incremental epi results...")
+      readr::write_csv(det$incremental, file.path(OUT_TAB, paste0("deterministic_incremental_epi", suffix, ".csv")))
+      message("[DEBUG] ✓ Incremental epi saved")
+    }, error = function(e) {
+      message("[ERROR] Failed to save incremental epi: ", e$message)
+      message("[DEBUG] Class of det$incremental: ", class(det$incremental))
+      message("[DEBUG] Is dataframe?: ", is.data.frame(det$incremental))
+    })
+    
+    # Save PSA results
+    tryCatch({
+      message("[DEBUG] Saving PSA results...")
+      readr::write_csv(psa_results, file.path(OUT_TAB, paste0("psa_long_results", suffix, ".csv")))
+      message("[DEBUG] ✓ PSA results saved")
+    }, error = function(e) {
+      message("[ERROR] Failed to save PSA results: ", e$message)
+      message("[DEBUG] Class of psa_results: ", class(psa_results))
+      message("[DEBUG] Is dataframe?: ", is.data.frame(psa_results))
+    })
+    
+    # Save OWSA results (handle multiple comparators)
     if (!is.null(owsa_out)) {
-      readr::write_csv(owsa_out$owsa_Cost, file.path(OUT_TAB, paste0("owsa_output_cost", suffix, ".csv")))
-      readr::write_csv(owsa_out$owsa_QALYs, file.path(OUT_TAB, paste0("owsa_output_qalys", suffix, ".csv")))
+      tryCatch({
+        message("[DEBUG] Saving OWSA results...")
+        # Check if multiple comparators (new format) or single comparator (old format)
+        if ("comparator" %in% names(owsa_out)) {
+          # Single comparator - old format
+          message("[DEBUG] Single comparator format detected: ", owsa_out$comparator)
+          readr::write_csv(owsa_out$owsa_Cost, 
+                           file.path(OUT_TAB, paste0("owsa_output_cost_", owsa_out$comparator, suffix, ".csv")))
+          readr::write_csv(owsa_out$owsa_QALYs, 
+                           file.path(OUT_TAB, paste0("owsa_output_qalys_", owsa_out$comparator, suffix, ".csv")))
+          message("[DEBUG] ✓ OWSA saved (single comparator)")
+        } else {
+          # Multiple comparators - new format (loop through each comparator)
+          message("[DEBUG] Multiple comparator format detected: ", paste(names(owsa_out), collapse = ", "))
+          for (comp in names(owsa_out)) {
+            message("[DEBUG] Saving OWSA for comparator: ", comp)
+            readr::write_csv(owsa_out[[comp]]$owsa_Cost, 
+                             file.path(OUT_TAB, paste0("owsa_output_cost_", comp, suffix, ".csv")))
+            readr::write_csv(owsa_out[[comp]]$owsa_QALYs, 
+                             file.path(OUT_TAB, paste0("owsa_output_qalys_", comp, suffix, ".csv")))
+          }
+          message("[DEBUG] ✓ OWSA saved (multiple comparators)")
+        }
+      }, error = function(e) {
+        message("[ERROR] Failed to save OWSA: ", e$message)
+      })
     }
     
     # Store results
@@ -410,7 +488,6 @@ for (current_perspective in perspectives_to_run) {
     )
     
     message(paste("\n[INFO] ===", toupper(current_perspective), "perspective analysis completed successfully ===\n"))
-    
   }, error = function(e) {
     message("\n========================================")
     message(paste("ERROR:", toupper(current_perspective), "PERSPECTIVE FAILED"))
@@ -486,7 +563,7 @@ message("========================================\n")
 
 # Optional: Clean up large objects to free memory
 # Uncomment if needed
-# rm(all_results, psa_parameter_samples)
-# gc()
+ rm(all_results, psa_parameter_samples)
+ gc()
 
 message("\n[INFO] Script completed. Check outputs folder for results.\n")
