@@ -46,10 +46,9 @@ owsa_model_function <- function(param_name, param_value, all_params) {
 }
 
 # FUNCTION 3: Execute OWSA with incremental outcomes
-# Now supports multiple comparators and strategy selection
 execute_owsa <- function(params_basecase, 
-                         comparators = "MenC",  # Can be vector: c("MenC", "MenACWY")
-                         strategies_to_test = NULL,  # NULL = all strategies except comparators
+                         comparators = "MenC",
+                         strategies_to_test = NULL,
                          nsamp = 25) {
   
   log_info("Running One-Way Sensitivity Analysis (OWSA)...")
@@ -58,18 +57,8 @@ execute_owsa <- function(params_basecase,
   # Determine which strategies to test
   all_strats <- v_strats
   
-  if (is.null(strategies_to_test)) {
-    # Test all strategies except comparators
-    strategies_to_test <- setdiff(all_strats, comparators)
-    log_info(paste("Testing all non-comparator strategies:", paste(strategies_to_test, collapse = ", ")))
-  } else {
-    # Validate user-specified strategies
-    invalid_strats <- setdiff(strategies_to_test, all_strats)
-    if (length(invalid_strats) > 0) {
-      log_error(paste("Invalid strategies specified:", paste(invalid_strats, collapse = ", ")))
-    }
-    log_info(paste("Testing user-specified strategies:", paste(strategies_to_test, collapse = ", ")))
-  }
+  # IMPORTANT: Cannot test a strategy against itself
+  # For each comparator, we test all OTHER strategies
   
   ranges_df <- create_owsa_ranges(params_basecase)
   
@@ -99,6 +88,23 @@ execute_owsa <- function(params_basecase,
   
   for (comp in comparators) {
     
+    # For THIS comparator, determine which strategies to test
+    if (is.null(strategies_to_test)) {
+      # Test all strategies EXCEPT this comparator
+      strategies_for_this_comp <- setdiff(all_strats, comp)
+    } else {
+      # Use user-specified strategies, but exclude this comparator
+      strategies_for_this_comp <- setdiff(strategies_to_test, comp)
+    }
+    
+    # Skip if no strategies to test against this comparator
+    if (length(strategies_for_this_comp) == 0) {
+      log_warn(paste("No strategies to test against comparator:", comp, "- skipping"))
+      next
+    }
+    
+    log_info(paste("For comparator", comp, "testing strategies:", paste(strategies_for_this_comp, collapse = ", ")))
+    
     owsa_cost_df <- do.call(rbind, lapply(names(full_owsa_results), function(name) {
       min_data <- full_owsa_results[[name]]$min
       max_data <- full_owsa_results[[name]]$max
@@ -107,9 +113,9 @@ execute_owsa <- function(params_basecase,
       comp_cost_min <- min_data$Cost[min_data$Strategy == comp]
       comp_cost_max <- max_data$Cost[max_data$Strategy == comp]
       
-      # Only include tested strategies
-      min_data_filtered <- min_data[min_data$Strategy %in% strategies_to_test, ]
-      max_data_filtered <- max_data[max_data$Strategy %in% strategies_to_test, ]
+      # Only include strategies we're testing for this comparator
+      min_data_filtered <- min_data[min_data$Strategy %in% strategies_for_this_comp, ]
+      max_data_filtered <- max_data[max_data$Strategy %in% strategies_for_this_comp, ]
       
       if (nrow(min_data_filtered) == 0) return(NULL)
       
@@ -120,7 +126,6 @@ execute_owsa <- function(params_basecase,
         strategy = min_data_filtered$Strategy,
         Cost_min = min_data_filtered$Cost,
         Cost_max = max_data_filtered$Cost,
-        # INCREMENTAL COSTS
         Inc_Cost_min = min_data_filtered$Cost - comp_cost_min,
         Inc_Cost_max = max_data_filtered$Cost - comp_cost_max,
         stringsAsFactors = FALSE
@@ -135,9 +140,9 @@ execute_owsa <- function(params_basecase,
       comp_qaly_min <- min_data$QALYs[min_data$Strategy == comp]
       comp_qaly_max <- max_data$QALYs[max_data$Strategy == comp]
       
-      # Only include tested strategies
-      min_data_filtered <- min_data[min_data$Strategy %in% strategies_to_test, ]
-      max_data_filtered <- max_data[max_data$Strategy %in% strategies_to_test, ]
+      # Only include strategies we're testing for this comparator
+      min_data_filtered <- min_data[min_data$Strategy %in% strategies_for_this_comp, ]
+      max_data_filtered <- max_data[max_data$Strategy %in% strategies_for_this_comp, ]
       
       if (nrow(min_data_filtered) == 0) return(NULL)
       
@@ -148,7 +153,6 @@ execute_owsa <- function(params_basecase,
         strategy = min_data_filtered$Strategy,
         QALYs_min = min_data_filtered$QALYs,
         QALYs_max = max_data_filtered$QALYs,
-        # INCREMENTAL QALYs
         Inc_QALYs_min = min_data_filtered$QALYs - comp_qaly_min,
         Inc_QALYs_max = max_data_filtered$QALYs - comp_qaly_max,
         stringsAsFactors = FALSE
@@ -165,7 +169,7 @@ execute_owsa <- function(params_basecase,
   log_info("OWSA complete")
   
   # If single comparator, return old format for compatibility
-  if (length(comparators) == 1) {
+  if (length(owsa_results_by_comparator) == 1) {
     return(owsa_results_by_comparator[[1]])
   }
   
