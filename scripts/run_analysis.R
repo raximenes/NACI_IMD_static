@@ -74,8 +74,8 @@ start_time <- Sys.time()
 # ============================================================
 
 # Analysis settings
-COHORT_SIZE <- 100000L           # Number of individuals in the cohort
-N_SIMULATIONS <- 1000       # Number of PSA simulations
+COHORT_SIZE <- 100L           # Number of individuals in the cohort
+N_SIMULATIONS <- 10       # Number of PSA simulations
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
 ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
 
