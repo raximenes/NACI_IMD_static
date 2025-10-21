@@ -75,7 +75,7 @@ start_time <- Sys.time()
 
 # Analysis settings
 COHORT_SIZE <- 100L           # Number of individuals in the cohort
-N_SIMULATIONS <- 10       # Number of PSA simulations
+N_SIMULATIONS <- 10L       # Number of PSA simulations
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
 ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
 
@@ -83,13 +83,15 @@ ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
 REUSE_PSA_SAMPLES <- TRUE   # Set to TRUE to reuse existing PSA samples (if available)
 # Set to FALSE to generate new PSA samples
 
+# OWSA Configuration - EDIT HERE
+owsa_comparators <- c("all")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
+owsa_strategies <- NULL  # NULL = all except comparators, or specify: c("MenACWY", "MenABCWY")
+
 # Visualization options
 CREATE_OWSA_PLOTS <- TRUE   # Set to FALSE to skip OWSA tornado plots
 
 # SET seed for reproducibility
 RANDOM_SEED <- 2025
-
-# [Rest of your code continues here...]
 
 # ============================================================
 # PACKAGE INSTALLATION AND LOADING
@@ -129,7 +131,7 @@ message("========================================")
 message(paste("Cohort Size:", COHORT_SIZE))
 message(paste("PSA Simulations:", N_SIMULATIONS))
 message(paste("WTP Threshold: CAD", format(WTP_THRESHOLD, big.mark = ",")))
-message(paste("Perspective(s):", paste(perspectives_to_run, collapse = " + ")))
+message(paste("Perspective(s):", paste(perspectives_to_run, collapse = " & ")))
 message(paste("Random Seed:", RANDOM_SEED))
 message(paste("Reuse PSA Samples:", ifelse(REUSE_PSA_SAMPLES, "YES (if available)", "NO (generate new)")))
 message(paste("OWSA Plots:", ifelse(CREATE_OWSA_PLOTS, "YES", "NO")))
@@ -354,15 +356,26 @@ for (current_perspective in perspectives_to_run) {
     
     if (CREATE_OWSA_PLOTS) {
       message("\n[INFO] Running One-Way Sensitivity Analysis (OWSA)...")
-      owsa_out <- execute_owsa(params_bc, comparator = "MenC")
+      
+      # Special case: if "all", use all strategies as comparators
+      if (length(owsa_comparators) == 1 && owsa_comparators == "all") {
+        owsa_comparators <- v_strats
+      }
+      
+      owsa_out <- execute_owsa(
+        params_bc, 
+        comparators = owsa_comparators,
+        strategies_to_test = owsa_strategies
+      )
       
       # Generate tornado plots
       create_owsa_plots(
         owsa_out, 
         det, 
-        strategies = v_strats,
+        strategies = owsa_strategies,  # Will use all strategies in owsa_out if NULL
         wtp = WTP_THRESHOLD,
-        plot_type = "both"
+        plot_type = "both",  # "incremental", "nmb", "both", or "icer"
+        perspective = current_perspective
       )
     } else {
       owsa_out <- NULL
