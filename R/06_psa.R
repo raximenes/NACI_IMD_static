@@ -52,29 +52,6 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
       flat_sds[[nm]] <<- adj$sd
       dists[[nm]] <<- dist
     }
-    
-    # if (dist == "beta") {
-    #   # Force a minimum value to avoid numerical issues
-    #   mean_val <- max(mean_val, 1e-10)
-    #   sd_val   <- max(sd_val, 1e-10)
-    #   
-    #   adj <- .beta_safe(mean_val, sd_val)
-    #   if (is.null(adj)) {
-    #     return()
-    #   }
-    #   
-    #   flat_means[[nm]] <<- adj$mean
-    #   flat_sds[[nm]] <<- adj$sd
-    #   dists[[nm]] <<- dist
-    # } else if (dist == "gamma") {
-    #   adj <- .gamma_safe(mean_val, sd_val)
-    #   if (is.null(adj)) {
-    #     return()
-    #   }
-    #   flat_means[[nm]] <<- adj$mean
-    #   flat_sds[[nm]] <<- adj$sd
-    #   dists[[nm]] <<- dist
-    # }
   }
   
   # Helper to add vector parameter
@@ -375,7 +352,6 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   ))
 }
 
-# Run PSA with parallel processing
 # Run PSA with parallel processing
 run_psa <- function(params, n_sim = 1000, wtp = 50000) {
   # Setup parallel cluster
