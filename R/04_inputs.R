@@ -6,9 +6,20 @@
 # - Reading SD values directly from Excel
 # 
 # IMPORTANT: Parameters WITHOUT SD values in Excel will remain FIXED in PSA
+# EXCEPTION: Vaccine prices are ALWAYS FIXED regardless of SD presence
 # - To make a parameter vary in PSA: provide a valid SD > 0
 # - To keep a parameter fixed in PSA: set SD to 0, NA, or leave blank
 # - This applies to both scalar and time-varying (vector) parameters
+
+
+# - Discount rates loaded from Excel (d_c, d_e in model_settings)
+# - Societal costs loaded from Excel (Societal_Costs sheet)
+# - Vaccine prices ALWAYS FIXED in PSA (no SD used even if present)
+# 
+
+
+
+
 
 file_main  <- file.path(IN_RAW, "IMD Data.xls")
 file_price <- file.path(IN_RAW, "vaccine_costs.xlsx")
@@ -69,15 +80,18 @@ get_base_params <- function() {
   
   nC  <- getv(ms, "n_cycles", "model_settings")
   cyc <- getv(ms, "cycle_len", "model_settings")
+  
+  # Discount rates from Excel (d_c and d_e)
   dc  <- getv(ms, "d_c", "model_settings")
   de  <- getv(ms, "d_e", "model_settings")
   
+  # Coverage rates
   cov_ABCWY <- getv(ms, "coverage_ABCWY", "model_settings")
   cov_ACWY  <- getv(ms, "coverage_ACWY", "model_settings")
   cov_C     <- getv(ms, "coverage_C", "model_settings")
   cov_B     <- getv(ms, "coverage_B", "model_settings")
   
-  # Optional: coverage SDs (for PSA)
+  # Coverage SDs (for PSA)
   sd_cov_ABCWY <- get_sd(ms, "coverage_ABCWY", "model_settings")
   sd_cov_ACWY  <- get_sd(ms, "coverage_ACWY", "model_settings")
   sd_cov_C     <- get_sd(ms, "coverage_C", "model_settings")
@@ -86,7 +100,52 @@ get_base_params <- function() {
   log_info(paste("Model settings: n_cycles =", nC, ", cycle_length =", cyc))
   
   # ============================================================
-  # STEP 4: Vaccine Prices
+  # STEP 4: Societal Productivity Costs (from Excel)
+  # ============================================================
+  
+  soc_costs <- data_list[["Societal_Costs"]]
+  if (is.null(soc_costs)) {
+    log_warn("Sheet 'Societal_Costs' not found - using zero productivity costs")
+    c_prod_societal <- c(
+      Scarring         = 0,
+      Single_Amput     = 0,
+      Multiple_Amput   = 0,
+      Neuro_Disability = 0,
+      Hearing_Loss     = 0,
+      Renal_Failure    = 0,
+      Seizure          = 0,
+      Paralysis        = 0
+    )
+  } else {
+    if (!all(c("Name", "Value") %in% names(soc_costs))) {
+      log_error("Sheet 'Societal_Costs' must have 'Name' and 'Value' columns")
+    }
+    
+    getsc <- function(nm) {
+      v <- soc_costs$Value[soc_costs$Name == nm]
+      if (length(v) == 0) {
+        log_warn(paste0("Societal cost for '", nm, "' not found - using 0"))
+        return(0)
+      }
+      as.numeric(v[1])
+    }
+    
+    c_prod_societal <- c(
+      Scarring         = getsc("Scarring"),
+      Single_Amput     = getsc("Single_Amput"),
+      Multiple_Amput   = getsc("Multiple_Amput"),
+      Neuro_Disability = getsc("Neuro_Disability"),
+      Hearing_Loss     = getsc("Hearing_Loss"),
+      Renal_Failure    = getsc("Renal_Failure"),
+      Seizure          = getsc("Seizure"),
+      Paralysis        = getsc("Paralysis")
+    )
+    
+    log_info("Societal productivity costs loaded from Excel")
+  }
+  
+  # ============================================================
+  # STEP 5: Vaccine Prices
   # ============================================================
   
   if (!file.exists(file_price)) {
@@ -120,19 +179,23 @@ get_base_params <- function() {
     }
     as.numeric(v[1])
   }
-  
+ 
   c_MenABCWY <- getp("c_MenABCWY")
   c_MenACWY  <- getp("c_MenACWY")
   c_MenC     <- getp("c_MenC")
   c_MenB     <- getp("c_MenB")
   
-  sd_c_MenABCWY <- get_price_sd("c_MenABCWY")
-  sd_c_MenACWY  <- get_price_sd("c_MenACWY")
-  sd_c_MenC     <- get_price_sd("c_MenC")
-  sd_c_MenB     <- get_price_sd("c_MenB")
+  # IMPORTANT: Vaccine prices are ALWAYS FIXED in PSA
+  # Set SD to NA regardless of what's in Excel
+  sd_c_MenABCWY <- NA
+  sd_c_MenACWY  <- NA
+  sd_c_MenC     <- NA
+  sd_c_MenB     <- NA
+  
+  log_info("Vaccine prices loaded (ALWAYS FIXED in PSA)")
   
   # ============================================================
-  # STEP 5: Other Costs (admin, sequelae)
+  # STEP 6: Other Costs (admin, sequelae)
   # ============================================================
   
   costs_tbl <- data_list[["costs"]]
@@ -189,7 +252,7 @@ get_base_params <- function() {
   sd_c_Dead           <- get_sd_c("c_Dead")
   
   # ============================================================
-  # STEP 6: Infection Costs (time-varying vector)
+  # STEP 7: Infection Costs (time-varying vector)
   # ============================================================
   
   cost_imd <- data_list[["cost_IMD"]]
@@ -216,7 +279,7 @@ get_base_params <- function() {
   }
   
   # ============================================================
-  # STEP 7: Infection Probabilities (time-varying vectors)
+  # STEP 8: Infection Probabilities (time-varying vectors)
   # ============================================================
   
   inf <- data_list[["infection"]]
@@ -278,7 +341,7 @@ get_base_params <- function() {
   log_info("Infection probabilities loaded and converted from rates")
   
   # ============================================================
-  # STEP 8: Mortality (background + CFRs)
+  # STEP 9: Mortality (background + CFRs)
   # ============================================================
   
   mort <- data_list[["mortality"]]
@@ -345,7 +408,7 @@ get_base_params <- function() {
   log_info("Mortality parameters loaded")
   
   # ============================================================
-  # STEP 9: Sequelae Probabilities and Shares
+  # STEP 10: Sequelae Probabilities and Shares
   # ============================================================
   
   seq_tbl <- data_list[["sequelae_probp_IMD"]]
@@ -415,7 +478,7 @@ get_base_params <- function() {
   log_info("Sequelae parameters loaded")
   
   # ============================================================
-  # STEP 10: Utilities
+  # STEP 11: Utilities
   # ============================================================
   
   utab <- data_list[["utilities"]]
@@ -484,7 +547,7 @@ get_base_params <- function() {
   log_info("Utility parameters loaded")
   
   # ============================================================
-  # STEP 11: Vaccine Effectiveness
+  # STEP 12: Vaccine Effectiveness
   # ============================================================
   
   ve_df <- data_list[["vac_effect"]]
@@ -536,7 +599,7 @@ get_base_params <- function() {
   log_info("Vaccine effectiveness parameters loaded")
   
   # ============================================================
-  # STEP 12: Build Complete Parameter List
+  # STEP 13: Build Complete Parameter List
   # ============================================================
   
   params <- list(
