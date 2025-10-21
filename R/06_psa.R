@@ -1,10 +1,9 @@
 ## ======================
-## 6) PSA Functions (UPDATED - FIXED)
+## 6) PSA Functions (UPDATED - Vaccine prices ALWAYS FIXED)
 ## ======================
 # - Using SD values directly from Excel (no fixed values)
 # - Supporting time-varying SD vectors
-# - Vaccine costs now included with their SDs from Excel
-# - Fixed: Replaced all log_warn with message() or log_info()
+# - Vaccine costs EXCLUDED from PSA (always fixed)
 
 # Generate PSA samples using Excel SD values
 generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
@@ -89,25 +88,16 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
     .add_scalar(nm, params[[nm]], params[[sd_nm]], "gamma")
   }
   
+  # Administration cost
+  .add_scalar("c_admin", params$c_admin, params$sd_c_admin, "gamma")
+  
   # Infection costs (time-varying vector)
   .add_vector("c_IMD_infection", params$c_IMD_infection, params$sd_c_IMD_infection, "gamma")
   
-  # Vaccine costs (now included in PSA with Excel SDs)
-  if (exists("file_price") && file.exists(file_price)) {
-    pr <- readxl::read_excel(file_price)
-    
-    get_price_sd <- function(nm) {
-      if (!"sd" %in% names(pr)) return(NA)
-      v <- pr$sd[pr$Name == nm]
-      if (length(v) == 0) return(NA)
-      as.numeric(v[1])
-    }
-    
-    .add_scalar("c_MenABCWY", params$c_MenABCWY, get_price_sd("c_MenABCWY"), "gamma")
-    .add_scalar("c_MenACWY",  params$c_MenACWY,  get_price_sd("c_MenACWY"),  "gamma")
-    .add_scalar("c_MenC",     params$c_MenC,     get_price_sd("c_MenC"),     "gamma")
-    .add_scalar("c_MenB",     params$c_MenB,     get_price_sd("c_MenB"),     "gamma")
-  }
+  # IMPORTANT: Vaccine prices are NEVER included in PSA
+  # They are always fixed at their deterministic values
+  # Even if SD values exist in Excel, they are ignored
+  log_info("Vaccine prices (c_MenABCWY, c_MenACWY, c_MenC, c_MenB) are FIXED in PSA")
   
   ## ---- PROBABILITIES (Beta distribution) ----
   
@@ -213,18 +203,14 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
     s <- params  # Start with base parameters (FIXED values preserved)
     
     ## Update scalar cost parameters (only if they were in PSA)
-    for (nm in cost_seq_params) {
+    for (nm in c(cost_seq_params, "c_admin")) {
       if (nm %in% names(row)) {
         s[[nm]] <- as.numeric(row[[nm]])
       }
     }
     
-    # Update vaccine costs (only if they were in PSA)
-    for (nm in c("c_MenABCWY", "c_MenACWY", "c_MenC", "c_MenB")) {
-      if (nm %in% names(row)) {
-        s[[nm]] <- as.numeric(row[[nm]])
-      }
-    }
+    # VACCINE PRICES ALWAYS REMAIN FIXED (never updated from PSA)
+    # s$c_MenABCWY, s$c_MenACWY, s$c_MenC, s$c_MenB stay at deterministic values
     
     ## Update vector cost parameters (only elements that were in PSA)
     vcost_psa <- gather_vec("c_IMD_infection", row)
@@ -343,6 +329,7 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   })
   
   log_info(paste("Total parameters varying in PSA:", length(flat_means)))
+  log_info("Vaccine prices excluded from PSA (always fixed)")
   log_info("PSA samples generated successfully with Excel SD values")
   
   # Return both samples and the raw PSA dataframe for visualization
