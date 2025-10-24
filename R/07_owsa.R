@@ -280,7 +280,7 @@ create_owsa_plots <- function(owsa_out, det_results,
           )
         
         print(p_owsa_inc_cost)
-        filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_cost_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        filename <- file.path(OUT_FIG_OWSA, paste0("owsa_tornado_inc_cost_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
         try(ggsave(filename, p_owsa_inc_cost, width = 8, height = 7, dpi = 300))
         
         ## --- INCREMENTAL QALYs TORNADO ---
@@ -327,7 +327,7 @@ create_owsa_plots <- function(owsa_out, det_results,
           )
         
         print(p_owsa_inc_qaly)
-        filename <- file.path(OUT_FIG, paste0("owsa_tornado_inc_qalys_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        filename <- file.path(OUT_FIG_OWSA, paste0("owsa_tornado_inc_qalys_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
         try(ggsave(filename, p_owsa_inc_qaly, width = 8, height = 7, dpi = 300))
       }
       
@@ -386,7 +386,7 @@ create_owsa_plots <- function(owsa_out, det_results,
           )
         
         print(p_owsa_nmb)
-        filename <- file.path(OUT_FIG, paste0("owsa_tornado_nmb_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
+        filename <- file.path(OUT_FIG_OWSA, paste0("owsa_tornado_nmb_", strategy_to_plot, "_vs_", comparator, "_", perspective, ".png"))
         try(ggsave(filename, p_owsa_nmb, width = 8, height = 7, dpi = 300))
       }
       

@@ -68,31 +68,6 @@
 # START TIMER
 # ============================================================
 start_time <- Sys.time()
-
-# ============================================================
-# CONFIGURATION SECTION - EDIT THESE VALUES
-# ============================================================
-
-# Analysis settings
-COHORT_SIZE <- 100L           # Number of individuals in the cohort
-N_SIMULATIONS <- 100L       # Number of PSA simulations
-WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
-ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
-
-# PSA options
-REUSE_PSA_SAMPLES <- TRUE   # Set to TRUE to reuse existing PSA samples (if available)
-# Set to FALSE to generate new PSA samples
-
-# OWSA Configuration - EDIT HERE
-owsa_comparators <- c("MenC")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
-owsa_strategies <- NULL  # NULL = all except comparators, or specify: c("MenACWY", "MenABCWY")
-
-# Visualization options
-CREATE_OWSA_PLOTS <- TRUE   # Set to FALSE to skip OWSA tornado plots
-
-# SET seed for reproducibility
-RANDOM_SEED <- 2025
-
 # ============================================================
 # PACKAGE INSTALLATION AND LOADING
 # ============================================================
@@ -108,6 +83,48 @@ p_load(here, readxl, ggplot2, dplyr, tidyr, purrr, stringr,
        tibble, doParallel, foreach, parallel, diagram, reshape2, readr)
 p_load_gh("DARTH-git/darthtools")
 p_load(dampack)
+
+
+# ============================================================
+# SOURCE ALL MODEL FILES
+# ============================================================
+
+message("[INFO] Sourcing model files...")
+
+# Source numbered R files in order
+files <- list.files("R", pattern = "^[0-9]{2}.*\\.R$", full.names = TRUE)
+files <- files[order(files)]
+
+for (file in files) {
+  message(paste("  Loading:", basename(file)))
+  source(file)
+}
+
+message("[INFO] All model files loaded successfully\n")
+# ============================================================
+# CONFIGURATION SECTION - EDIT THESE VALUES
+# ============================================================
+
+# Analysis settings
+#N_SIMULATIONS <-2500L       # Number of PSA simulations
+COHORT_SIZE <- n_cohort       # Number of individuals in the cohort -  defined in 02_globals.R
+
+WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
+# ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
+
+# PSA options
+REUSE_PSA_SAMPLES <- TRUE   # Set to TRUE to reuse existing PSA samples (if available)
+# Set to FALSE to generate new PSA samples
+
+# OWSA Configuration - EDIT HERE
+owsa_comparators <- c("all")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
+owsa_strategies <- NULL  # NULL = all except comparators, or specify: c("MenACWY", "MenABCWY")
+
+# Visualization options
+CREATE_OWSA_PLOTS <- TRUE   # Set to FALSE to skip OWSA tornado plots
+
+# SET seed for reproducibility
+RANDOM_SEED <- 2025
 
 # ============================================================
 # VALIDATE AND SET PERSPECTIVES
@@ -140,22 +157,6 @@ message("========================================\n")
 # Set random seed
 set.seed(RANDOM_SEED)
 
-# ============================================================
-# SOURCE ALL MODEL FILES
-# ============================================================
-
-message("[INFO] Sourcing model files...")
-
-# Source numbered R files in order
-files <- list.files("R", pattern = "^[0-9]{2}.*\\.R$", full.names = TRUE)
-files <- files[order(files)]
-
-for (file in files) {
-  message(paste("  Loading:", basename(file)))
-  source(file)
-}
-
-message("[INFO] All model files loaded successfully\n")
 
 # ============================================================
 # LOAD OR GENERATE PSA SAMPLES (PERSPECTIVE-INDEPENDENT)
@@ -245,9 +246,29 @@ for (current_perspective in perspectives_to_run) {
     message(paste("RUNNING ANALYSIS:", toupper(current_perspective), "PERSPECTIVE"))
     message("========================================\n")
     
+   
+    
+    # UPDATE GLOBAL PERSPECTIVE AND FOLDER STRUCTURE
+
     # Set perspective
     perspective <- current_perspective
+    update_output_folders(current_perspective)
     n_cohort <- as.integer(COHORT_SIZE)
+    
+    # Create perspective-specific folder for deterministic plots
+    if (current_perspective == "healthcare") {
+      folder_name <- "Healthcare"
+    } else if (current_perspective == "societal") {
+      folder_name <- "societal"
+    } else {
+      folder_name <- current_perspective
+    }
+    
+    OUT_FIG_DETERM <- file.path(OUT_FIG, "DETERMINISTIC", folder_name)
+    dir.create(OUT_FIG_DETERM, recursive = TRUE, showWarnings = FALSE)
+    message("[INFO] Deterministic plots will be saved to: ", OUT_FIG_DETERM)
+    
+   
     
     # Reload base parameters with correct perspective
     params_bc <- get_base_params()
@@ -268,7 +289,7 @@ for (current_perspective in perspectives_to_run) {
     # Plot ICER frontier
     p_icer <- try(plot(det$icers), silent = TRUE)
     if (inherits(p_icer, "ggplot")) {
-      filename <- file.path(OUT_FIG, paste0("deterministic_icers_frontier_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DETERM, paste0("deterministic_icers_frontier_", current_perspective, ".png"))
       try(ggsave(filename, p_icer, width = 7, height = 5, dpi = 300))
       try(print(p_icer))
     }
@@ -339,14 +360,14 @@ for (current_perspective in perspectives_to_run) {
     # Plot CEAC
     p_ceac <- try(plot(objs$ceac), silent = TRUE)
     if (inherits(p_ceac, "ggplot")) {
-      filename <- file.path(OUT_FIG, paste0("psa_ceac_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DETERM, paste0("psa_ceac_", current_perspective, ".png"))
       try(ggsave(filename, p_ceac, width = 7, height = 5, dpi = 300))
     }
     
     # Plot EVPI
     p_evpi <- try(plot(objs$evpi), silent = TRUE)
     if (inherits(p_evpi, "ggplot")) {
-      filename <- file.path(OUT_FIG, paste0("psa_evpi_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DETERM, paste0("psa_evpi_", current_perspective, ".png"))
       try(ggsave(filename, p_evpi, width = 7, height = 5, dpi = 300))
     }
     
@@ -356,8 +377,8 @@ for (current_perspective in perspectives_to_run) {
     
     if (CREATE_OWSA_PLOTS) {
       message("\n[INFO] Running One-Way Sensitivity Analysis (OWSA)...")
+      message("[INFO] OWSA plots will be saved to: ", OUT_FIG_OWSA)
       
-      # Special case: if "all", use all strategies as comparators
       if (length(owsa_comparators) == 1 && owsa_comparators == "all") {
         owsa_comparators <- v_strats
       }
@@ -372,16 +393,17 @@ for (current_perspective in perspectives_to_run) {
       create_owsa_plots(
         owsa_out, 
         det, 
-        strategies = owsa_strategies,  # Will use all strategies in owsa_out if NULL
+        strategies = owsa_strategies,
         wtp = WTP_THRESHOLD,
-        plot_type = "both",  # "incremental", "nmb", "both", or "icer"
+        plot_type = "both",
         perspective = current_perspective
       )
+      
     } else {
       owsa_out <- NULL
       message("\n[INFO] OWSA plots skipped (CREATE_OWSA_PLOTS = FALSE)")
     }
-
+    
     # ============================================================
     # SAVE RESULTS
     # ============================================================
@@ -563,7 +585,7 @@ message("========================================\n")
 
 # Optional: Clean up large objects to free memory
 # Uncomment if needed
- rm(all_results, psa_parameter_samples)
- gc()
+# rm(all_results, psa_parameter_samples)
+# gc()
 
 message("\n[INFO] Script completed. Check outputs folder for results.\n")

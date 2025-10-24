@@ -1,39 +1,12 @@
 ## ======================
-## 6b) PSA Visualization Functions (FIXED - No log_warn)
+## 6b) PSA Visualization Functions (UPDATED - Uses OUT_FIG_PSA)
 ## ======================
-# Functions to visualize PSA parameter distributions
-# All log_warn replaced with message() for parallel compatibility
-
-# ============================================================================
-# TEMPORAL SUMMARY PLOT EXPLANATION
-# ============================================================================
-# 
-# This plot shows how a time-varying parameter changes over cycles (age)
-# with uncertainty from PSA:
-#
-# LINES:
-#   - Blue solid line = PSA Mean (average of all PSA simulations)
-#   - Red dashed line = Deterministic (fixed value from Excel)
-#
-# SHADED AREA:
-#   - Light blue ribbon = 95% Credible Interval (CI)
-#   - Shows the range where 95% of PSA simulations fall
-#   - Wider area = more uncertainty in the parameter
-#
-# INTERPRETATION:
-#   ✓ Lines should be CLOSE: If PSA Mean ≈ Deterministic, your PSA is 
-#     well-calibrated and distributions are correctly specified
-#   ✗ Lines far apart: May indicate problems with SD specification in Excel
-#     or distribution parameterization
-#
-# UNCERTAINTY PATTERNS:
-#   - Narrow CI = parameter is well-known with low uncertainty
-#   - Wide CI = high uncertainty, need better data or more research
-#   - CI width may increase at older ages due to sparse epidemiological data
-#
-# NOTE: With few PSA iterations (e.g., n=4), the PSA mean may be unstable.
-#       Use n≥1000 for reliable PSA results.
-# ============================================================================
+# Description: Functions to visualize PSA parameter distributions
+# - Creates temporal summary plots showing mean and 95% CI over time
+# - Generates distribution plots for scalar and time-varying parameters
+# - Validates PSA samples against deterministic values
+# - All plots saved to organized PSA perspective-specific folders
+# - Fixed: Handles VE parameters that exist in psa_df but not directly in params_base
 
 # Plot mean and 95% CI over time for temporal parameters
 plot_psa_temporal_summary <- function(psa_df, params_base,
@@ -42,7 +15,6 @@ plot_psa_temporal_summary <- function(psa_df, params_base,
   
   log_info(paste("Creating temporal summary plot for", param_name, "..."))
   
-  # Gather all cycles
   param_cols <- grep(paste0("^", param_name, "\\d+$"), names(psa_df), value = TRUE)
   
   if (length(param_cols) == 0) {
@@ -52,7 +24,6 @@ plot_psa_temporal_summary <- function(psa_df, params_base,
   
   n_cycles <- length(param_cols)
   
-  # Calculate statistics for each cycle
   summary_data <- data.frame(
     cycle = 1:n_cycles,
     mean = numeric(n_cycles),
@@ -70,7 +41,6 @@ plot_psa_temporal_summary <- function(psa_df, params_base,
     summary_data$upper[i] <- quantile(samples, 0.975)
   }
   
-  # Create plot
   p <- ggplot(summary_data, aes(x = cycle)) +
     geom_ribbon(aes(ymin = lower, ymax = upper), 
                 fill = "#69b3a2", 
@@ -98,56 +68,14 @@ plot_psa_temporal_summary <- function(psa_df, params_base,
   
   print(p)
   
-  filename <- file.path(OUT_FIG, paste0("psa_temporal_summary_", param_name, ".png"))
+  # UPDATED: Save to PSA folder
+  filename <- file.path(OUT_FIG_PSA, paste0("psa_temporal_summary_", param_name, ".png"))
   try(ggsave(filename, p, width = 8, height = 5, dpi = 300))
   
   log_info("Temporal summary plot created")
   
   return(invisible(p))
 }
-
-# ============================================================================
-# TEMPORAL DISTRIBUTION PLOTS EXPLANATION (Individual Cycles)
-# ============================================================================
-#
-# These histograms show the DISTRIBUTION of a parameter at SPECIFIC cycles
-# (ages) based on PSA simulations.
-#
-# WHAT YOU SEE:
-#   - Histogram bars = Frequency of parameter values across PSA simulations
-#   - Black density curve = Smooth estimate of the distribution shape
-#   - Red dashed line = Deterministic value (from Excel)
-#
-# INTERPRETATION:
-#
-# 1. DISTRIBUTION SHAPE:
-#    - Bell-shaped (Normal) = Most common for costs, utilities
-#    - Right-skewed (Gamma) = Common for cost parameters (can't be negative)
-#    - Bounded (Beta) = For probabilities (must be between 0 and 1)
-#
-# 2. SPREAD (Width):
-#    - Narrow distribution = Low uncertainty, precise parameter
-#    - Wide distribution = High uncertainty, imprecise parameter
-#    - Spread is controlled by SD in Excel
-#
-# 3. CENTRAL TENDENCY:
-#    - Peak of distribution should be near the deterministic value (red line)
-#    - If far apart, check SD specification in Excel
-#
-# 4. COMPARING ACROSS CYCLES:
-#    Example: p_B_cycle1 vs p_B_cycle89
-#    - Cycle 1 (age 11): High infection risk, narrow distribution (good data)
-#    - Cycle 89 (age 100): Low infection risk, wider distribution (sparse data)
-#    - Uncertainty often increases with age due to limited epidemiological data
-#
-# PRACTICAL USE:
-#   - Identify which cycles/ages have the most uncertainty
-#   - Prioritize data collection for parameters with wide distributions
-#   - Validate that distributions match expected parameter ranges
-#
-# NOTE: With n=4 simulations, histograms will be very crude (only 4 bars).
-#       Use n≥1000 for smooth, interpretable distributions.
-# ============================================================================
 
 # Plot distributions for time-varying parameters
 plot_psa_temporal_distributions <- function(psa_df, params_base,
@@ -156,7 +84,6 @@ plot_psa_temporal_distributions <- function(psa_df, params_base,
   
   log_info(paste("Creating temporal distribution plots for", param_name, "..."))
   
-  # Gather all cycles for this parameter
   param_cols <- grep(paste0("^", param_name, "\\d+$"), names(psa_df), value = TRUE)
   
   if (length(param_cols) == 0) {
@@ -167,12 +94,10 @@ plot_psa_temporal_distributions <- function(psa_df, params_base,
   n_cycles <- length(param_cols)
   log_info(paste("Found", n_cycles, "cycles for", param_name))
   
-  # Ensure cycles_to_plot are valid
   cycles_to_plot <- cycles_to_plot[cycles_to_plot <= n_cycles]
   
   plots_list <- list()
   
-  # Plot distributions for selected cycles
   for (cycle in cycles_to_plot) {
     col_name <- paste0(param_name, cycle)
     
@@ -208,7 +133,8 @@ plot_psa_temporal_distributions <- function(psa_df, params_base,
     
     plots_list[[paste0("cycle_", cycle)]] <- p
     
-    filename <- file.path(OUT_FIG, paste0("psa_dist_", param_name, "_cycle", cycle, ".png"))
+    # UPDATED: Save to PSA folder
+    filename <- file.path(OUT_FIG_PSA, paste0("psa_dist_", param_name, "_cycle", cycle, ".png"))
     try(ggsave(filename, p, width = 6, height = 4, dpi = 300))
   }
   
@@ -217,46 +143,23 @@ plot_psa_temporal_distributions <- function(psa_df, params_base,
   return(invisible(plots_list))
 }
 
-# ============================================================================
-# SCALAR DISTRIBUTION PLOTS EXPLANATION
-# ============================================================================
-#
-# These histograms show PSA distributions for SCALAR parameters (single values
-# that don't change over time, like costs, utilities, overall probabilities).
-#
-# SAME INTERPRETATION as temporal distributions, but for:
-#   - Costs: c_Scarring, c_Single_Amput, etc.
-#   - Utilities: u_IMD, u_Scarring, etc.
-#   - Fixed probabilities: p_seq_overall, coverage rates
-#   - Vaccine costs: c_MenABCWY, c_MenB, etc.
-#
-# KEY DIFFERENCES FROM TEMPORAL PLOTS:
-#   - Single histogram (not one per cycle)
-#   - Represents a constant value used throughout the model
-#   - Often has tighter distributions (better data available)
-#
-# NOTE: With n=4 simulations, you'll only see 4 discrete bars.
-#       Use n≥1000 for smooth, bell-shaped distributions.
-# ============================================================================
-
 # Plot distributions for scalar parameters
+# FIXED: Added safety checks for NULL/NA/non-numeric deterministic values
+# This prevents errors when VE parameters exist in psa_df but not directly in params_base
 plot_psa_scalar_distributions <- function(psa_df, params_base, 
                                           param_names = NULL, 
                                           max_plots = 20) {
   
   log_info("Creating PSA distribution plots for scalar parameters...")
   
-  # Get all scalar parameters (exclude those with numbers at end)
   all_params <- names(psa_df)[!grepl("\\d+$", names(psa_df))]
   
-  # Filter to specified parameters or use all
   if (!is.null(param_names)) {
     params_to_plot <- intersect(param_names, all_params)
   } else {
     params_to_plot <- all_params
   }
   
-  # Limit number of plots
   if (length(params_to_plot) > max_plots) {
     message(paste("[WARN] Too many parameters. Plotting only first", max_plots))
     params_to_plot <- params_to_plot[1:max_plots]
@@ -270,13 +173,32 @@ plot_psa_scalar_distributions <- function(psa_df, params_base,
   plots_list <- list()
   
   for (param in params_to_plot) {
-    # Get PSA samples
     samples <- psa_df[[param]]
-    
-    # Get deterministic value
     det_value <- params_base[[param]]
     
-    # Create histogram with density curve
+    # FIXED: Safety check for NULL, NA, or non-numeric deterministic values
+    # This is critical because VE parameters like "ve_base_MenABCWY_for_SeroACWY" 
+    # exist in psa_df (PSA samples) but not directly in params_base as scalar values.
+    # They are stored in params_base$ve_data$effectiveness instead.
+    if (is.null(det_value) || !is.numeric(det_value) || length(det_value) != 1) {
+      # Try to get VE from ve_data if it's a VE parameter
+      if (grepl("^ve_base_", param)) {
+        vaccine_name <- gsub("ve_base_", "", param)
+        if (!is.null(params_base$ve_data)) {
+          ve_match <- params_base$ve_data$effectiveness[params_base$ve_data$vaccine == vaccine_name]
+          if (length(ve_match) > 0 && is.numeric(ve_match)) {
+            det_value <- ve_match[1]
+          }
+        }
+      }
+      # If still invalid after trying to extract from ve_data, skip this parameter
+      if (is.null(det_value) || !is.numeric(det_value) || length(det_value) != 1) {
+        message(paste("[WARN] Skipping", param, "- deterministic value not found or invalid"))
+        next  # Skip to next parameter instead of crashing
+      }
+    }
+    
+    # Now det_value is guaranteed to be valid numeric, safe to use with round()
     p <- ggplot(data.frame(value = samples), aes(x = value)) +
       geom_histogram(aes(y = after_stat(density)), 
                      bins = 40, 
@@ -292,7 +214,7 @@ plot_psa_scalar_distributions <- function(psa_df, params_base,
         title = paste("PSA Distribution:", param),
         subtitle = paste0("Mean = ", round(mean(samples), 6), 
                           " | SD = ", round(sd(samples), 6),
-                          " | Det = ", round(det_value, 6)),
+                          " | Det = ", round(det_value, 6)),  # Safe to use round() now
         x = "Parameter Value",
         y = "Density"
       ) +
@@ -304,8 +226,8 @@ plot_psa_scalar_distributions <- function(psa_df, params_base,
     
     plots_list[[param]] <- p
     
-    # Save individual plot
-    filename <- file.path(OUT_FIG, paste0("psa_dist_", param, ".png"))
+    # UPDATED: Save to PSA folder
+    filename <- file.path(OUT_FIG_PSA, paste0("psa_dist_", param, ".png"))
     try(ggsave(filename, p, width = 6, height = 4, dpi = 300))
   }
   
@@ -319,14 +241,12 @@ plot_psa_key_parameters_panel <- function(psa_df, params_base) {
   
   log_info("Creating key parameters panel...")
   
-  # Define key parameters to show
   key_params <- c(
     "c_Scarring", "c_Single_Amput", "c_Multiple_Amput",
     "u_IMD", "u_Scarring", "u_Single_Amput",
     "p_seq_overall", "coverage_ACWY"
   )
   
-  # Filter to available parameters
   available_params <- intersect(key_params, names(psa_df))
   
   if (length(available_params) == 0) {
@@ -334,7 +254,6 @@ plot_psa_key_parameters_panel <- function(psa_df, params_base) {
     return(invisible(NULL))
   }
   
-  # Prepare data for plotting
   plot_data <- lapply(available_params, function(param) {
     data.frame(
       parameter = param,
@@ -343,7 +262,6 @@ plot_psa_key_parameters_panel <- function(psa_df, params_base) {
     )
   }) %>% bind_rows()
   
-  # Create faceted plot
   p <- ggplot(plot_data, aes(x = value)) +
     geom_histogram(aes(y = after_stat(density)), 
                    bins = 30, 
@@ -370,7 +288,8 @@ plot_psa_key_parameters_panel <- function(psa_df, params_base) {
   
   print(p)
   
-  filename <- file.path(OUT_FIG, "psa_key_parameters_panel.png")
+  # UPDATED: Save to PSA folder
+  filename <- file.path(OUT_FIG_PSA, "psa_key_parameters_panel.png")
   try(ggsave(filename, p, width = 12, height = 8, dpi = 300))
   
   log_info("Key parameters panel created")
@@ -383,16 +302,13 @@ plot_psa_validation <- function(psa_df, params_base) {
   
   log_info("Creating PSA validation plot...")
   
-  # Get scalar parameters only
   scalar_params <- names(psa_df)[!grepl("\\d+$", names(psa_df))]
   
-  # Calculate PSA means (safely handle non-numeric values)
   psa_means <- sapply(scalar_params, function(param) {
     val <- mean(psa_df[[param]], na.rm = TRUE)
     if (is.finite(val)) val else NA
   })
   
-  # Get deterministic values (safely handle non-numeric values)
   det_values <- sapply(scalar_params, function(param) {
     val <- params_base[[param]]
     if (is.null(val)) return(NA)
@@ -400,7 +316,6 @@ plot_psa_validation <- function(psa_df, params_base) {
     return(NA)
   })
   
-  # Create comparison dataframe and remove NAs
   comparison <- data.frame(
     parameter = scalar_params,
     deterministic = det_values,
@@ -408,7 +323,6 @@ plot_psa_validation <- function(psa_df, params_base) {
     stringsAsFactors = FALSE
   )
   
-  # Remove rows with NA or non-finite values
   comparison <- comparison[is.finite(comparison$deterministic) & 
                              is.finite(comparison$psa_mean) &
                              comparison$deterministic != 0, ]
@@ -418,10 +332,8 @@ plot_psa_validation <- function(psa_df, params_base) {
     return(invisible(NULL))
   }
   
-  # Calculate ratio
   comparison$ratio <- comparison$psa_mean / comparison$deterministic
   
-  # Plot
   p <- ggplot(comparison, aes(x = deterministic, y = psa_mean)) +
     geom_abline(intercept = 0, slope = 1, 
                 color = "red", linetype = "dashed", size = 1) +
@@ -437,10 +349,10 @@ plot_psa_validation <- function(psa_df, params_base) {
   
   print(p)
   
-  filename <- file.path(OUT_FIG, "psa_validation.png")
+  # UPDATED: Save to PSA folder
+  filename <- file.path(OUT_FIG_PSA, "psa_validation.png")
   try(ggsave(filename, p, width = 7, height = 6, dpi = 300))
   
-  # Print parameters with largest deviations
   comparison <- comparison %>%
     mutate(pct_diff = abs(ratio - 1) * 100) %>%
     arrange(desc(pct_diff))
@@ -474,7 +386,7 @@ create_all_psa_distribution_plots <- function(psa_df, params_base) {
   }
   
   # 4. Temporal distributions for selected cycles
-  for (param in c("p_B", "p_C")) {
+  for (param in c("p_B", "p_C", "p_W", "p_Y")) {
     param_cols <- grep(paste0("^", param, "\\d+$"), names(psa_df), value = TRUE)
     if (length(param_cols) > 0) {
       plot_psa_temporal_distributions(
@@ -497,6 +409,7 @@ create_all_psa_distribution_plots <- function(psa_df, params_base) {
   }
   
   log_info("=== All PSA distribution plots created ===\n")
+  log_info(paste("All plots saved to:", OUT_FIG_PSA))
   
   return(invisible(NULL))
 }

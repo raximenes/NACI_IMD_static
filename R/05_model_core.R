@@ -110,31 +110,41 @@ build_transition_array <- function(params, strategy) {
     cfrY <- .clamp(params$p_Y_DeadIMD[t] * params$mult_cfr_Y, 0, 0.999)
     pseq <- .clamp(params$p_seq_overall, 0, 0.999)
     
-    # Helper function to fill infection state transitions
-    fill_inf <- function(state_name, cfr) {
-      # Die from IMD
-      a_P[state_name, "Dead_IMD", t] <- cfr
-      
-      # Survive but die from background mortality
-      a_P[state_name, "Background_Mortality", t] <- (1 - cfr) * pbg
-      
-      # Survive and avoid background mortality
-      palive_no_bg <- (1 - cfr) * (1 - pbg)
-      
-      # Distribute survivors to sequelae states
-      for (sq in names(params$w_seq)) {
-        a_P[state_name, sq, t] <- palive_no_bg * pseq * params$w_seq[[sq]]
-      }
-      
-      # Recover to healthy
-      a_P[state_name, "Healthy", t] <- palive_no_bg * (1 - pseq)
+    # Fill infection state transitions - SeroB
+    a_P["SeroB_Infect", "Dead_IMD", t] <- cfrB
+    a_P["SeroB_Infect", "Background_Mortality", t] <- (1 - cfrB) * pbg
+    palive_no_bg_B <- (1 - cfrB) * (1 - pbg)
+    for (sq in names(params$w_seq)) {
+      a_P["SeroB_Infect", sq, t] <- palive_no_bg_B * pseq * params$w_seq[[sq]]
     }
+    a_P["SeroB_Infect", "Healthy", t] <- palive_no_bg_B * (1 - pseq)
     
-    # Apply to all infection states
-    fill_inf("SeroB_Infect", cfrB)
-    fill_inf("SeroC_Infect", cfrC)
-    fill_inf("SeroW_Infect", cfrW)
-    fill_inf("SeroY_Infect", cfrY)
+    # Fill infection state transitions - SeroC
+    a_P["SeroC_Infect", "Dead_IMD", t] <- cfrC
+    a_P["SeroC_Infect", "Background_Mortality", t] <- (1 - cfrC) * pbg
+    palive_no_bg_C <- (1 - cfrC) * (1 - pbg)
+    for (sq in names(params$w_seq)) {
+      a_P["SeroC_Infect", sq, t] <- palive_no_bg_C * pseq * params$w_seq[[sq]]
+    }
+    a_P["SeroC_Infect", "Healthy", t] <- palive_no_bg_C * (1 - pseq)
+    
+    # Fill infection state transitions - SeroW
+    a_P["SeroW_Infect", "Dead_IMD", t] <- cfrW
+    a_P["SeroW_Infect", "Background_Mortality", t] <- (1 - cfrW) * pbg
+    palive_no_bg_W <- (1 - cfrW) * (1 - pbg)
+    for (sq in names(params$w_seq)) {
+      a_P["SeroW_Infect", sq, t] <- palive_no_bg_W * pseq * params$w_seq[[sq]]
+    }
+    a_P["SeroW_Infect", "Healthy", t] <- palive_no_bg_W * (1 - pseq)
+    
+    # Fill infection state transitions - SeroY
+    a_P["SeroY_Infect", "Dead_IMD", t] <- cfrY
+    a_P["SeroY_Infect", "Background_Mortality", t] <- (1 - cfrY) * pbg
+    palive_no_bg_Y <- (1 - cfrY) * (1 - pbg)
+    for (sq in names(params$w_seq)) {
+      a_P["SeroY_Infect", sq, t] <- palive_no_bg_Y * pseq * params$w_seq[[sq]]
+    }
+    a_P["SeroY_Infect", "Healthy", t] <- palive_no_bg_Y * (1 - pseq)
     
     # Sequelae states: absorbing with background mortality
     for (sq in names(params$w_seq)) {

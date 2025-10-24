@@ -340,64 +340,135 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
 }
 
 # Run PSA with parallel processing
-run_psa <- function(params, n_sim = 1000, wtp = 50000) {
-  # Setup parallel cluster
-  n_cores <- parallel::detectCores() - 1
-  if (is.na(n_cores) || n_cores < 1) n_cores <- 1
+# run_psa <- function(params, n_sim = 1000, wtp = 50000) {
+#   # Setup parallel cluster
+#   n_cores <- parallel::detectCores() - 1
+#   if (is.na(n_cores) || n_cores < 1) n_cores <- 1
+#   
+#   cl <- parallel::makeCluster(n_cores)
+#   doParallel::registerDoParallel(cl)
+#   
+#   log_info(paste("Running", n_sim, "PSA simulations on", n_cores, "cores..."))
+#   
+#   # Generate all parameter samples
+#   psa_output <- generate_psa_samples(params, n_sim = n_sim)
+#   samp <- psa_output$samples
+#   psa_df <- psa_output$psa_df
+#   
+#   # Run simulations in parallel
+#   res <- foreach::foreach(
+#     i = 1:n_sim,
+#     .combine = 'rbind',
+#     .packages = c('dplyr', 'tibble', 'darthtools'),
+#     .export = c(
+#       # Functions
+#       "eval_all_strategies", "eval_strategy", "build_transition_array",
+#       "run_markov", "get_serogroup_ve", "shift_ve", ".clamp",
+#       "get_state_costs", "get_state_utils", "vaccination_costs",
+#       # Logging functions (CRITICAL!)
+#       "log_info", "log_warn", "log_error",
+#       # Global variables
+#       "v_strats", "v_states", "n_states", "c_prod_societal",
+#       "v_discount_cost", "v_discount_qaly", "n_cohort"
+#     )
+#   ) %dopar% {
+#     # Evaluate all strategies for this parameter set
+#     r_i <- eval_all_strategies(samp[[i]])
+#     
+#     # Return results as tibble
+#     tibble::tibble(
+#       sim = i,
+#       Strategy = names(r_i),
+#       Cost  = vapply(r_i, function(x) x$cost, numeric(1)),
+#       QALYs = vapply(r_i, function(x) x$qalys, numeric(1))
+#     )
+#   }
+#   
+#   # Stop parallel cluster
+#   parallel::stopCluster(cl)
+#   
+#   # Calculate NMB
+#   res <- res %>%
+#     dplyr::mutate(NMB = QALYs * wtp - Cost)
+#   
+#   log_info("PSA completed successfully")
+#   
+#   # Return both results and parameter distributions
+#   return(list(
+#     results = res,
+#     psa_df = psa_df
+#   ))
+# }
+# Run PSA with parallel processing (cleaned up & reproducible)
+run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
+  # Determine cores (at least 1; cap at n_sim to avoid idle workers)
+  n_cores <- parallel::detectCores()
+  if (is.na(n_cores) || n_cores < 1) n_cores <- 1L
+  n_cores <- max(1L, min(n_cores - 1L, n_sim))
   
+  # Create & register cluster
   cl <- parallel::makeCluster(n_cores)
+  on.exit({ try(parallel::stopCluster(cl), silent = TRUE) }, add = TRUE)
   doParallel::registerDoParallel(cl)
+  
+  # Reproducible RNG across workers
+  parallel::clusterSetRNGStream(cl, iseed = seed)
   
   log_info(paste("Running", n_sim, "PSA simulations on", n_cores, "cores..."))
   
-  # Generate all parameter samples
-  psa_output <- generate_psa_samples(params, n_sim = n_sim)
-  samp <- psa_output$samples
+  # Generate parameter samples (also reproducible)
+  psa_output <- generate_psa_samples(params, n_sim = n_sim, seed = seed)
+  samp   <- psa_output$samples
   psa_df <- psa_output$psa_df
   
-  # Run simulations in parallel
+  # One-time export of everything workers need
+  export_names <- c(
+    # parameter samples used by foreach body
+    "samp",
+    # model functions
+    "eval_all_strategies", "eval_strategy", "build_transition_array",
+    "run_markov", "get_serogroup_ve", "shift_ve", ".clamp",
+    "get_state_costs", "get_state_utils", "vaccination_costs",
+    # logging helpers
+    "log_info", "log_warn", "log_error",
+    # globals
+    "v_strats", "v_states", "n_states", "c_prod_societal",
+    "v_discount_cost", "v_discount_qaly", "n_cohort"
+  )
+  parallel::clusterExport(cl, unique(export_names), envir = environment())
+  
+  # Ensure required packages are loaded on workers (for nested function calls)
+  parallel::clusterEvalQ(cl, {
+    suppressPackageStartupMessages({
+      library(dplyr); library(tibble); library(darthtools)
+    })
+    NULL
+  })
+  
+  # Parallel simulation (no .export here → no duplicate-export warnings)
   res <- foreach::foreach(
-    i = 1:n_sim,
-    .combine = 'rbind',
-    .packages = c('dplyr', 'tibble', 'darthtools'),
-    .export = c(
-      # Functions
-      "eval_all_strategies", "eval_strategy", "build_transition_array",
-      "run_markov", "get_serogroup_ve", "shift_ve", ".clamp",
-      "get_state_costs", "get_state_utils", "vaccination_costs",
-      # Logging functions (CRITICAL!)
-      "log_info", "log_warn", "log_error",
-      # Global variables
-      "v_strats", "v_states", "n_states", "c_prod_societal",
-      "v_discount_cost", "v_discount_qaly", "n_cohort"
-    )
+    i = seq_len(n_sim),
+    .combine = "rbind"
   ) %dopar% {
-    # Evaluate all strategies for this parameter set
     r_i <- eval_all_strategies(samp[[i]])
-    
-    # Return results as tibble
     tibble::tibble(
       sim = i,
       Strategy = names(r_i),
-      Cost  = vapply(r_i, function(x) x$cost, numeric(1)),
+      Cost  = vapply(r_i, function(x) x$cost,  numeric(1)),
       QALYs = vapply(r_i, function(x) x$qalys, numeric(1))
     )
   }
   
-  # Stop parallel cluster
-  parallel::stopCluster(cl)
-  
-  # Calculate NMB
-  res <- res %>%
-    dplyr::mutate(NMB = QALYs * wtp - Cost)
+  # Calculate NMB (base R to avoid extra dependencies here)
+  res$NMB <- res$QALYs * wtp - res$Cost
   
   log_info("PSA completed successfully")
   
-  # Return both results and parameter distributions
-  return(list(
+  # Return both results and the PSA parameter draws (for plotting/diagnostics)
+  list(
     results = res,
-    psa_df = psa_df
-  ))
+    psa_df  = psa_df
+  )
 }
 
 # Create PSA objects for dampack

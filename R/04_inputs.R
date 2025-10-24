@@ -441,14 +441,39 @@ get_base_params <- function() {
     as.numeric(v[1])
   }
   
-  # Overall sequelae probability
+  # Overall sequelae probability - WITH ENHANCED VALIDATION
   p_seq_overall <- gv_seq("p_IMD_overall")
-  if (p_seq_overall < 0 || p_seq_overall > 1) {
-    log_error("p_IMD_overall must be between 0 and 1")
+  
+  # CRITICAL VALIDATION: Check for NA first
+  if (is.na(p_seq_overall)) {
+    log_error(
+      "CRITICAL ERROR: p_IMD_overall is NA! ",
+      "Check that Excel sheet 'sequelae_probp_IMD' contains parameter 'p_IMD_overall' with valid value"
+    )
   }
+  
+  # Range validation
+  if (p_seq_overall < 0 || p_seq_overall > 1) {
+    log_error(
+      sprintf(
+        "CRITICAL ERROR: p_IMD_overall=%.6f is outside valid range [0,1]",
+        p_seq_overall
+      )
+    )
+  }
+  
+  # WARNING: If sequelae probability is zero
+  if (p_seq_overall == 0) {
+    log_warn(
+      "WARNING: p_IMD_overall is EXACTLY ZERO. ",
+      "NO SEQUELAE CASES will be generated. ",
+      "Check if this is intentional."
+    )
+  }
+  
   sd_p_seq_overall <- get_sd_seq("p_IMD_overall")
   
-  # Sequelae shares
+  # Sequelae shares - WITH ENHANCED VALIDATION
   shares_raw <- c(
     Scarring         = gv_seq("p_IMD_Scarring"),
     Single_Amput     = gv_seq("p_IMD_Single_Amput"),
@@ -460,8 +485,42 @@ get_base_params <- function() {
     Paralysis        = gv_seq("p_IMD_Paralysis")
   )
   
-  # Normalize shares to sum to 1
-  w_seq <- .normalize_shares(shares_raw, default_share = shares_raw / sum(shares_raw))
+  # Check for NA values in shares
+  if (any(is.na(shares_raw))) {
+    na_types <- names(shares_raw)[is.na(shares_raw)]
+    log_error(
+      sprintf(
+        "CRITICAL ERROR: Sequelae shares contain NA values: %s. ",
+        paste(na_types, collapse = ", ")
+      ),
+      "Check Excel sheet 'sequelae_probp_IMD' for missing entries."
+    )
+  }
+  
+  # Check that sum of shares is positive
+  shares_sum <- sum(shares_raw)
+  if (shares_sum <= 0) {
+    log_error(
+      sprintf(
+        "CRITICAL ERROR: Sum of sequelae shares is %.6f (must be > 0)",
+        shares_sum
+      )
+    )
+  }
+  
+  # Normalize shares to sum to 1 - SAFE VERSION
+  w_seq <- shares_raw / shares_sum
+  
+  # Final validation: check no NA values remain
+  if (any(is.na(w_seq))) {
+    log_error("CRITICAL ERROR: w_seq contains NA values after normalization!")
+  }
+  
+  # Log sequelae distribution for audit trail
+  log_info("Sequelae distribution (normalized):")
+  for (sq_name in names(w_seq)) {
+    log_info(sprintf("  %s: %.4f", sq_name, w_seq[sq_name]))
+  }
   
   # Read SD for sequelae shares
   sd_shares <- c(
@@ -475,7 +534,7 @@ get_base_params <- function() {
     Paralysis        = get_sd_seq("p_IMD_Paralysis")
   )
   
-  log_info("Sequelae parameters loaded")
+  log_info("Sequelae parameters loaded and validated")
   
   # ============================================================
   # STEP 11: Utilities
