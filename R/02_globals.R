@@ -20,13 +20,13 @@
 # CRITICAL: Larger cohorts reduce stochastic noise but increase computation time
 # TYPICAL: 1,000,000 for final runs; 100,000 for testing
 if (!exists("n_cohort")) {
-  n_cohort <- 1000000L
+  n_cohort <- 100000L
 }
 
 # PSA configuration
 # TYPICAL: 2,500-10,000 for final analysis; 100-500 for testing
 if (!exists("N_SIMULATIONS")) {
-  N_SIMULATIONS <- 3000L
+  N_SIMULATIONS <- 1L
 }
 
 ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
@@ -122,16 +122,16 @@ n_states <- length(v_states)
 # Annual productivity losses by sequela type
 # SOURCE: Cost-effectiveness analysis inputs
 # UNIT: CAD per year for affected individuals
-c_prod_societal <- c(
-  Scarring         =  5000,
-  Single_Amput     = 12000,
-  Multiple_Amput   = 20000,
-  Neuro_Disability = 20000,
-  Hearing_Loss     =  8000,
-  Renal_Failure    = 10000,
-  Seizure          = 10000,
-  Paralysis        = 20000
-)
+# c_prod_societal <- c(
+#   Scarring         =  5000,
+#   Single_Amput     = 12000,
+#   Multiple_Amput   = 20000,
+#   Neuro_Disability = 20000,
+#   Hearing_Loss     =  8000,
+#   Renal_Failure    = 10000,
+#   Seizure          = 10000,
+#   Paralysis        = 20000
+# )
 
 # ============================================================
 # OUTPUT FOLDER ORGANIZATION BY ANALYSIS TYPE
@@ -140,7 +140,7 @@ c_prod_societal <- c(
 # STRUCTURE:
 # outputs/
 # ├── figures/
-# │   ├── DETERMINISTIC/
+# │   ├── Base_Case/
 # │   │   ├── healthcare/
 # │   │   └── societal/
 # │   ├── PSA/
@@ -160,7 +160,7 @@ c_prod_societal <- c(
 OUT_FIG_BASE_PSA   <- file.path(OUT_FIG, "PSA")
 OUT_FIG_BASE_OWSA  <- file.path(OUT_FIG, "OWSA")
 OUT_FIG_BASE_KEY   <- file.path(OUT_FIG, "KEY_PLOTS")
-OUT_FIG_BASE_DET   <- file.path(OUT_FIG, "DETERMINISTIC")
+OUT_FIG_BASE_DET   <- file.path(OUT_FIG, "Base_Case")
 
 # Create base folders
 dir.create(OUT_FIG_BASE_PSA, recursive = TRUE, showWarnings = FALSE)
@@ -217,5 +217,5 @@ log_info(paste("  - Random seed:", RANDOM_SEED))
 log_info(paste("  - Perspective:", perspective))
 log_info(paste("  - Age range:", age_start, "to", age_end, "(", n_cycles, "cycles)"))
 log_info(paste("  - Discount rates: Cost =", dr_cost, ", QALY =", dr_qaly))
-log_info(paste("  - Output folders organized by: DETERMINISTIC, PSA, OWSA, KEY_PLOTS"))
+log_info(paste("  - Output folders organized by: Base_Case, PSA, OWSA, KEY_PLOTS"))
 log_info(paste("  - Perspective-specific subfolders created"))

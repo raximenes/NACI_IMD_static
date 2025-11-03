@@ -9,12 +9,12 @@ main <- function() {
   # Load base-case parameters
   params_bc <- get_base_params()
   
-  ## --- DETERMINISTIC ANALYSIS ---
-  log_info("\n=== Running Deterministic Analysis ===")
+  ## --- BASE CASE ANALYSIS ---
+  log_info("\n=== Running Base Case Analysis ===")
   res_det_list <- eval_all_strategies(params_bc)
   det <- summarize_det(res_det_list, comparator = "MenC")
   
-  log_info("\nDeterministic Results:")
+  log_info("\nBase Case Results:")
   print(det$table)
   print(det$icers)
   print(det$incremental)
@@ -22,7 +22,7 @@ main <- function() {
   # Plot ICER frontier
   p_icer <- try(plot(det$icers), silent = TRUE)
   if (inherits(p_icer, "ggplot")) {
-    try(ggsave(file.path(OUT_FIG, "deterministic_icers_frontier.png"), p_icer, width = 7, height = 5, dpi = 300))
+    try(ggsave(file.path(OUT_FIG, "base_case_icers_frontier.png"), p_icer, width = 7, height = 5, dpi = 300))
     try(print(p_icer))
   }
   
@@ -58,9 +58,9 @@ main <- function() {
  
   ## --- SAVE RESULTS ---
   log_info("\n=== Saving Results ===")
-  readr::write_csv(det$table,        file.path(OUT_TAB, "deterministic_results.csv"))
-  readr::write_csv(as.data.frame(det$icers), file.path(OUT_TAB, "deterministic_icers.csv"))
-  readr::write_csv(det$incremental,  file.path(OUT_TAB, "deterministic_incremental_epi.csv"))
+  readr::write_csv(det$table,        file.path(OUT_TAB, "base_case_results.csv"))
+  readr::write_csv(as.data.frame(det$icers), file.path(OUT_TAB, "base_case_icers.csv"))
+  readr::write_csv(det$incremental,  file.path(OUT_TAB, "base_case_incremental_epi.csv"))
   readr::write_csv(psa_long,         file.path(OUT_TAB, "psa_long_results.csv"))
   if (is.list(owsa_out)) {
     readr::write_csv(owsa_out$owsa_Cost,  file.path(OUT_TAB, "owsa_output_cost.csv"))
@@ -71,5 +71,5 @@ main <- function() {
   log_info(paste("Figures:", OUT_FIG))
   log_info(paste("Tables:",  OUT_TAB))
   
-  invisible(list(deterministic = det, psa = psa_long, psa_parameters = psa_df, psa_objects = objs, owsa = owsa_out))
+  invisible(list(base_case = det, psa = psa_long, psa_parameters = psa_df, psa_objects = objs, owsa = owsa_out))
 }

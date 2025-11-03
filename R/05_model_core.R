@@ -40,6 +40,7 @@ get_serogroup_ve <- function(params, strategy, t) {
   
   # Clamp VE to valid range
   ve_clamped <- .clamp(ve, 0, 1)
+  names(ve_clamped) <- names(ve)  
   
   # Warn if clamping occurred
   if (any(ve != ve_clamped)) {
@@ -66,10 +67,10 @@ build_transition_array <- function(params, strategy) {
     ve <- get_serogroup_ve(params, strategy, t)
     
     # Infection risks after VE and multipliers
-    p_inf_B <- .clamp(params$p_B[t] * params$mult_p_B * (1 - ve["B"]), 0, 0.999)
-    p_inf_C <- .clamp(params$p_C[t] * params$mult_p_C * (1 - ve["C"]), 0, 0.999)
-    p_inf_W <- .clamp(params$p_W[t] * params$mult_p_W * (1 - ve["W"]), 0, 0.999)
-    p_inf_Y <- .clamp(params$p_Y[t] * params$mult_p_Y * (1 - ve["Y"]), 0, 0.999)
+    p_inf_B <- .clamp(params$p_B[t] * params$mult_p_B * (1 - ve[["B"]]), 0, 0.999)
+    p_inf_C <- .clamp(params$p_C[t] * params$mult_p_C * (1 - ve[["C"]]), 0, 0.999)
+    p_inf_W <- .clamp(params$p_W[t] * params$mult_p_W * (1 - ve[["W"]]), 0, 0.999)
+    p_inf_Y <- .clamp(params$p_Y[t] * params$mult_p_Y * (1 - ve[["Y"]]), 0, 0.999)
     
     p_inf_total <- p_inf_B + p_inf_C + p_inf_W + p_inf_Y
     p_stay_healthy <- 1 - pbg - p_inf_total
@@ -208,48 +209,111 @@ run_markov <- function(a_P, params) {
 }
 
 # Get state costs (with societal perspective adjustment)
+# get_state_costs <- function(params, t) {
+#   # Sequelae costs
+#   c_seq <- c(
+#     Scarring         = params$c_Scarring,
+#     Single_Amput     = params$c_Single_Amput,
+#     Multiple_Amput   = params$c_Multiple_Amput,
+#     Neuro_Disability = params$c_Neuro_Disab,
+#     Hearing_Loss     = params$c_Hearing_Loss,
+#     Renal_Failure    = params$c_Renal_Failure,
+#     Seizure          = params$c_Seizure,
+#     Paralysis        = params$c_Paralysis
+#   )
+#   
+#   # Add productivity costs if societal perspective
+#   if (identical(params$perspective, "societal")) {
+#     # Build societal costs from individual parameters
+#     c_prod <- c(
+#       Scarring         = params$c_prod_Scarring,
+#       Single_Amput     = params$c_prod_Single_Amput,
+#       Multiple_Amput   = params$c_prod_Multiple_Amput,
+#       Neuro_Disability = params$c_prod_Neuro_Disability,
+#       Hearing_Loss     = params$c_prod_Hearing_Loss,
+#       Renal_Failure    = params$c_prod_Renal_Failure,
+#       Seizure          = params$c_prod_Seizure,
+#       Paralysis        = params$c_prod_Paralysis
+#     )
+#     c_seq <- c_seq + c_prod[names(c_seq)]
+#   }
+#   
+#   # Infection costs (with multiplier)
+#   c_inf <- c(
+#     SeroB_Infect = params$c_IMD_infection[t],
+#     SeroC_Infect = params$c_IMD_infection[t],
+#     SeroW_Infect = params$c_IMD_infection[t],
+#     SeroY_Infect = params$c_IMD_infection[t]
+#   ) * params$mult_c_IMD
+#   
+#   # Other state costs
+#   c_other <- c(
+#     Healthy = params$c_Healthy,
+#     Dead_IMD = params$c_Dead,
+#     Background_Mortality = params$c_Dead
+#   )
+#   
+#   # Combine in correct state order
+#   costs <- setNames(
+#     c(c_other["Healthy"], c_inf, c_seq, c_other[c("Dead_IMD", "Background_Mortality")]),
+#     v_states
+#   )
+#   
+#   return(costs)
+# }
 get_state_costs <- function(params, t) {
-  # Sequelae costs
-  c_seq <- c(
-    Scarring         = params$c_Scarring,
-    Single_Amput     = params$c_Single_Amput,
-    Multiple_Amput   = params$c_Multiple_Amput,
+  
+  # Base healthcare costs (must exist)
+  costs <- c(
+    Healthy = params$c_Healthy,
+    Scarring = params$c_Scarring,
+    Single_Amput = params$c_Single_Amput,
+    Multiple_Amput = params$c_Multiple_Amput,
     Neuro_Disability = params$c_Neuro_Disab,
-    Hearing_Loss     = params$c_Hearing_Loss,
-    Renal_Failure    = params$c_Renal_Failure,
-    Seizure          = params$c_Seizure,
-    Paralysis        = params$c_Paralysis
+    Hearing_Loss = params$c_Hearing_Loss,
+    Renal_Failure = params$c_Renal_Failure,
+    Seizure = params$c_Seizure,
+    Paralysis = params$c_Paralysis,
+    Death = 0
   )
   
-  # Add productivity costs if societal perspective
-  if (identical(params$perspective, "societal")) {
-    c_seq <- c_seq + c_prod_societal[names(c_seq)]
+  # Verify all costs are numeric
+  if (any(is.na(costs)) || any(!is.numeric(costs))) {
+    na_states <- names(costs)[is.na(costs)]
+    stop(sprintf("Base healthcare costs have NA values for: %s", 
+                 paste(na_states, collapse = ", ")))
   }
   
-  # Infection costs (with multiplier)
-  c_inf <- c(
-    SeroB_Infect = params$c_IMD_infection[t],
-    SeroC_Infect = params$c_IMD_infection[t],
-    SeroW_Infect = params$c_IMD_infection[t],
-    SeroY_Infect = params$c_IMD_infection[t]
-  ) * params$mult_c_IMD
-  
-  # Other state costs
-  c_other <- c(
-    Healthy = params$c_Healthy,
-    Dead_IMD = params$c_Dead,
-    Background_Mortality = params$c_Dead
-  )
-  
-  # Combine in correct state order
-  costs <- setNames(
-    c(c_other["Healthy"], c_inf, c_seq, c_other[c("Dead_IMD", "Background_Mortality")]),
-    v_states
-  )
-  
+  # Add societal productivity costs if perspective is societal
+  if (!is.null(params$perspective) && params$perspective == "societal") {
+    
+    # Define sequelae states (exclude Healthy and Death)
+    sequelae_states <- c("Scarring", "Single_Amput", "Multiple_Amput",
+                         "Neuro_Disability", "Hearing_Loss", "Renal_Failure",
+                         "Seizure", "Paralysis")
+    
+    # Add productivity costs to each sequelae state
+    for (state in sequelae_states) {
+      prod_cost_param <- paste0("c_prod_", state)
+      prod_cost <- params[[prod_cost_param]]
+      
+      # Safety check: only add if productivity cost exists and is valid
+      if (!is.null(prod_cost) && !is.na(prod_cost) && is.numeric(prod_cost)) {
+        costs[state] <- costs[state] + prod_cost
+      } else {
+        warning(sprintf("Productivity cost %s is NULL/NA or invalid. Using 0.", prod_cost_param))
+        # costs[state] remains unchanged (no productivity cost added)
+      }
+    }
+  }
+  # Final verification: ensure no NA values in the result
+  if (any(is.na(costs))) {
+    na_states <- names(costs)[is.na(costs)]
+    stop(sprintf("FINAL costs vector has NA values for states: %s. Check Excel data.", 
+                 paste(na_states, collapse = ", ")))
+  }
   return(costs)
 }
-
 # Get state utilities
 get_state_utils <- function(params) {
   utils <- c(

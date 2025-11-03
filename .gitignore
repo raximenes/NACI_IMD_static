@@ -3,7 +3,8 @@
 .RData
 .Rproj.user/
 .Ruserdata
-
+.extra_analysis
+.article
 # Project-specific: ignore data and outputs
 data/
 outputs/

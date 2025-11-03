@@ -59,12 +59,26 @@ calculate_all_ve <- function(data, n_cycles = 89, waning_type = "linear") { # n_
 }
 
 # Shift VE vector by k years (for booster scenarios)
+# shift_ve <- function(ve_vec, k_shift) {
+#   if (k_shift <= 0) {
+#     return(ve_vec)
+#   } else {
+#     # Add zeros at the start and remove last k_shift elements
+#     c(rep(0, k_shift), head(ve_vec, -k_shift))
+#   }
+# }
+
 shift_ve <- function(ve_vec, k_shift) {
-  if (k_shift <= 0) {
-    return(ve_vec)
+  if (k_shift <= 0 || k_shift >= length(ve_vec)) {
+    return(rep(0, length(ve_vec)))  # Return zeros if shift is too large
   } else {
-    # Add zeros at the start and remove last k_shift elements
-    c(rep(0, k_shift), head(ve_vec, -k_shift))
+    # Add zeros at the start and pad with zeros at the end
+    shifted <- c(rep(0, k_shift), head(ve_vec, -k_shift))
+    # Ensure same length as original
+    if (length(shifted) < length(ve_vec)) {
+      shifted <- c(shifted, rep(0, length(ve_vec) - length(shifted)))
+    }
+    return(shifted)
   }
 }
 

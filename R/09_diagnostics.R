@@ -6,7 +6,7 @@
 # =========
 # This module provides comprehensive diagnostic capabilities for validating
 # the IMD vaccination model. It enables detailed inspection of model internals
-# at both the deterministic and PSA levels.
+# at both the base_case and PSA levels.
 #
 # KEY FEATURES:
 # =============
@@ -19,7 +19,7 @@
 # USAGE:
 # ======
 # Source this file after the main model files, then call:
-#   - save_deterministic_diagnostics(res_det_list, params, "output_folder")
+#   - save_base_case_diagnostics(res_det_list, params, "output_folder")
 #   - save_psa_diagnostics(psa_samples, n_samples, "output_folder")
 #
 ################################################################################
@@ -50,7 +50,7 @@ save_diagnostic_object <- function(obj, name, path, compress = TRUE) {
 }
 
 ## ======================
-## DETERMINISTIC DIAGNOSTICS
+## BASE CASE DIAGNOSTICS
 ## ======================
 
 # Extract comprehensive information from a single strategy's results
@@ -126,12 +126,12 @@ extract_strategy_details <- function(strategy_name, strategy_result, params) {
   return(details)
 }
 
-# Save comprehensive deterministic diagnostics
-save_deterministic_diagnostics <- function(res_det_list, params, 
+# Save comprehensive base case diagnostics
+save_base_case_diagnostics <- function(res_det_list, params, 
                                            output_folder = NULL,
                                            perspective = "healthcare") {
   
-  log_info("\n=== Saving Deterministic Model Diagnostics ===")
+  log_info("\n=== Saving Base Case Model Diagnostics ===")
   
   # Create output folder
   if (is.null(output_folder)) {
@@ -139,7 +139,7 @@ save_deterministic_diagnostics <- function(res_det_list, params,
   }
   
   # Add perspective to folder name
-  output_folder <- file.path(output_folder, paste0("deterministic_", perspective))
+  output_folder <- file.path(output_folder, paste0("base_case_", perspective))
   dir.create(output_folder, recursive = TRUE, showWarnings = FALSE)
   
   log_info(paste("Output folder:", output_folder))
@@ -201,12 +201,12 @@ save_deterministic_diagnostics <- function(res_det_list, params,
   save_diagnostic_object(diagnostics, "complete_diagnostics", output_folder)
   
   # Create validation report
-  validation <- validate_deterministic_results(all_details, params)
+  validation <- validate_base_case_results(all_details, params)
   filepath <- file.path(output_folder, "validation_report.txt")
   writeLines(validation$report, filepath)
   log_info("âœ“ Saved: validation_report.txt")
   
-  log_info("\n=== Deterministic Diagnostics Complete ===")
+  log_info("\n=== Base Case Diagnostics Complete ===")
   log_info(paste("Files saved to:", output_folder))
   
   return(invisible(diagnostics))
@@ -303,12 +303,12 @@ create_comparison_tables <- function(all_details, params) {
   ))
 }
 
-# Validate deterministic results
-validate_deterministic_results <- function(all_details, params) {
+# Validate Base Case results
+validate_base_case_results <- function(all_details, params) {
   
   report_lines <- c(
     "=======================================================",
-    "DETERMINISTIC MODEL VALIDATION REPORT",
+    "BASE CASE MODEL VALIDATION REPORT",
     "=======================================================",
     paste("Generated:", Sys.time()),
     paste("Cohort size:", n_cohort),
@@ -616,13 +616,13 @@ create_psa_iteration_summary <- function(psa_diagnostics) {
 
 # Load saved diagnostics
 load_diagnostics <- function(perspective = "healthcare", 
-                             type = c("deterministic", "psa"),
+                             type = c("base_case", "psa"),
                              base_path = OUT_TAB) {
   
   type <- match.arg(type)
   
   # CRITICAL FIX: Match where run_diagnostics.R actually saves files
-  # Both deterministic and PSA use perspective-specific subfolders
+  # Both BASE CASE and PSA use perspective-specific subfolders
   
   if (type == "psa") {
     # PSA files are saved in psa_[perspective] subfolder
@@ -631,9 +631,9 @@ load_diagnostics <- function(perspective = "healthcare",
     filepath_fallback <- file.path(base_path, perspective, "diagnostics_psa.rds")
     
   } else {
-    # Deterministic files are saved in deterministic_[perspective] subfolder
-    # Actual location: outputs/tables/healthcare/deterministic_healthcare/complete_diagnostics.rds
-    filepath_primary <- file.path(base_path, perspective, paste0("deterministic_", perspective), "complete_diagnostics.rds")
+    # base_case files are saved in base_case_[perspective] subfolder
+    # Actual location: outputs/tables/healthcare/base_case_healthcare/complete_diagnostics.rds
+    filepath_primary <- file.path(base_path, perspective, paste0("base_case_", perspective), "complete_diagnostics.rds")
     filepath_fallback <- file.path(base_path, perspective, "diagnostics_det.rds")
   }
   
@@ -662,8 +662,8 @@ load_diagnostics <- function(perspective = "healthcare",
 summarize_diagnostics <- function(diagnostics) {
   
   if ("strategy_details" %in% names(diagnostics)) {
-    # Deterministic diagnostics
-    cat("\n=== DETERMINISTIC DIAGNOSTICS SUMMARY ===\n")
+    # base_case diagnostics
+    cat("\n=== BASE CASE DIAGNOSTICS SUMMARY ===\n")
     cat(paste("Perspective:", diagnostics$metadata$perspective, "\n"))
     cat(paste("N Cohort:", diagnostics$metadata$n_cohort, "\n"))
     cat(paste("N Cycles:", diagnostics$metadata$n_cycles, "\n"))
@@ -689,7 +689,7 @@ summarize_diagnostics <- function(diagnostics) {
 
 log_info("âœ“ Diagnostics module (09_diagnostics.R) loaded successfully")
 log_info("Available functions:")
-log_info("  - save_deterministic_diagnostics()")
+log_info("  - save_base_case_diagnostics()")
 log_info("  - save_psa_diagnostics()")
 log_info("  - load_diagnostics()")
 log_info("  - summarize_diagnostics()")

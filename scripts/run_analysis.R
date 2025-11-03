@@ -19,7 +19,7 @@
 # STEP 2: Run complete cost-effectiveness analysis
 #         Run: source("run_analysis.R")
 #         - Automatically detects and reuses existing PSA samples (if available)
-#         - Runs deterministic analysis
+#         - Runs base_case analysis
 #         - Runs probabilistic sensitivity analysis (PSA)
 #         - Runs one-way sensitivity analysis (OWSA)
 #         - Generates all cost-effectiveness outputs (ICER, CEAC, EVPI, etc.)
@@ -47,14 +47,14 @@
 # OUTPUTS:
 # --------
 # Tables (outputs/tables/):
-#   - deterministic_results_[perspective].csv
-#   - deterministic_icers_[perspective].csv
+#   - base_case_results_[perspective].csv
+#   - base_case_icers_[perspective].csv
 #   - psa_long_results_[perspective].csv
 #   - owsa_output_cost_[perspective].csv
 #   - owsa_output_qalys_[perspective].csv
 #
 # Figures (outputs/figures/):
-#   - deterministic_icers_frontier_[perspective].png
+#   - base_case_icers_frontier_[perspective].png
 #   - psa_ceac_[perspective].png (cost-effectiveness acceptability curve)
 #   - psa_evpi_[perspective].png (expected value of perfect information)
 #   - owsa_tornado_*.png (one-way sensitivity tornado diagrams)
@@ -255,7 +255,7 @@ for (current_perspective in perspectives_to_run) {
     update_output_folders(current_perspective)
     n_cohort <- as.integer(COHORT_SIZE)
     
-    # Create perspective-specific folder for deterministic plots
+    # Create perspective-specific folder for base case plots
     if (current_perspective == "healthcare") {
       folder_name <- "Healthcare"
     } else if (current_perspective == "societal") {
@@ -264,9 +264,9 @@ for (current_perspective in perspectives_to_run) {
       folder_name <- current_perspective
     }
     
-    OUT_FIG_DETERM <- file.path(OUT_FIG, "DETERMINISTIC", folder_name)
+    OUT_FIG_DETERM <- file.path(OUT_FIG, "Base_Case", folder_name)
     dir.create(OUT_FIG_DETERM, recursive = TRUE, showWarnings = FALSE)
-    message("[INFO] Deterministic plots will be saved to: ", OUT_FIG_DETERM)
+    message("[INFO] Base Case plots will be saved to: ", OUT_FIG_DETERM)
     
    
     
@@ -274,14 +274,14 @@ for (current_perspective in perspectives_to_run) {
     params_bc <- get_base_params()
     
     # ============================================================
-    # DETERMINISTIC ANALYSIS
+    # BASE CASE ANALYSIS
     # ============================================================
     
-    message("[INFO] Running Deterministic Analysis...")
+    message("[INFO] Running Base Case Analysis...")
     res_det_list <- eval_all_strategies(params_bc)
     det <- summarize_det(res_det_list, comparator = "MenC")
     
-    message("\nDeterministic Results:")
+    message("Base Case Results:")
     print(det$table)
     print(det$icers)
     print(det$incremental)
@@ -289,7 +289,7 @@ for (current_perspective in perspectives_to_run) {
     # Plot ICER frontier
     p_icer <- try(plot(det$icers), silent = TRUE)
     if (inherits(p_icer, "ggplot")) {
-      filename <- file.path(OUT_FIG_DETERM, paste0("deterministic_icers_frontier_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DETERM, paste0("base_case_icers_frontier_", current_perspective, ".png"))
       try(ggsave(filename, p_icer, width = 7, height = 5, dpi = 300))
       try(print(p_icer))
     }
@@ -329,7 +329,7 @@ for (current_perspective in perspectives_to_run) {
         # Logging functions
         "log_info", "log_warn", "log_error",
         # Global variables
-        "v_strats", "v_states", "n_states", "c_prod_societal",
+        "v_strats", "v_states", "n_states",
         "v_discount_cost", "v_discount_qaly", "n_cohort"
       )
     ) %dopar% {
@@ -413,20 +413,20 @@ for (current_perspective in perspectives_to_run) {
     # Add perspective suffix to filenames
     suffix <- paste0("_", current_perspective)
     
-    # Save deterministic results table
+    # Save base case results table
     tryCatch({
-      message("[DEBUG] Saving deterministic results table...")
-      readr::write_csv(det$table, file.path(OUT_TAB, paste0("deterministic_results", suffix, ".csv")))
-      message("[DEBUG] ✓ Deterministic table saved")
+      message("[DEBUG] Saving base case results table...")
+      readr::write_csv(det$table, file.path(OUT_TAB, paste0("base_case_results", suffix, ".csv")))
+      message("[DEBUG] ✓ Base Case table saved")
     }, error = function(e) {
-      message("[ERROR] Failed to save deterministic table: ", e$message)
+      message("[ERROR] Failed to save Base Case table: ", e$message)
     })
     
     # Save ICERs
     tryCatch({
       message("[DEBUG] Saving ICERs...")
       icers_df <- as.data.frame(det$icers, stringsAsFactors = FALSE)
-      readr::write_csv(icers_df, file.path(OUT_TAB, paste0("deterministic_icers", suffix, ".csv")))
+      readr::write_csv(icers_df, file.path(OUT_TAB, paste0("base_case_icers", suffix, ".csv")))
       message("[DEBUG] ✓ ICERs saved")
     }, error = function(e) {
       message("[ERROR] Failed to save ICERs: ", e$message)
@@ -442,7 +442,7 @@ for (current_perspective in perspectives_to_run) {
           Status = as.character(det$icers$Status),
           stringsAsFactors = FALSE
         )
-        readr::write_csv(icers_df, file.path(OUT_TAB, paste0("deterministic_icers", suffix, ".csv")))
+        readr::write_csv(icers_df, file.path(OUT_TAB, paste0("base_case_icers", suffix, ".csv")))
         message("[DEBUG] ✓ ICERs saved (alternative method)")
       }, error = function(e2) {
         message("[ERROR] Alternative ICER save also failed: ", e2$message)
@@ -452,7 +452,7 @@ for (current_perspective in perspectives_to_run) {
     # Save incremental epidemiological results
     tryCatch({
       message("[DEBUG] Saving incremental epi results...")
-      readr::write_csv(det$incremental, file.path(OUT_TAB, paste0("deterministic_incremental_epi", suffix, ".csv")))
+      readr::write_csv(det$incremental, file.path(OUT_TAB, paste0("base_case_incremental_epi", suffix, ".csv")))
       message("[DEBUG] ✓ Incremental epi saved")
     }, error = function(e) {
       message("[ERROR] Failed to save incremental epi: ", e$message)
@@ -503,7 +503,7 @@ for (current_perspective in perspectives_to_run) {
     
     # Store results
     all_results[[current_perspective]] <- list(
-      deterministic = det,
+      base_case = det,
       psa = psa_results,
       psa_objects = objs,
       owsa = owsa_out
@@ -535,12 +535,12 @@ for (persp in perspectives_to_run) {
     message(paste("PERSPECTIVE:", toupper(persp)))
     message(strrep("=", 50))
     
-    # Deterministic results
-    message("\n--- DETERMINISTIC RESULTS ---")
-    print(all_results[[persp]]$deterministic$table)
+    # Base Case results
+    message("\n--- BASE CASE RESULTS ---")
+    print(all_results[[persp]]$base_case$table)
     
     message("\n--- ICERS ---")
-    print(all_results[[persp]]$deterministic$icers)
+    print(all_results[[persp]]$base_case$icers)
     
     # PSA summary
     if (!is.null(all_results[[persp]]$psa)) {

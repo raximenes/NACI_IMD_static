@@ -1,9 +1,117 @@
 ## ======================
-## 6) PSA Functions (UPDATED - Vaccine prices ALWAYS FIXED)
+## 6) PSA Functions - FULLY CORRECTED VERSION
 ## ======================
 # - Using SD values directly from Excel (no fixed values)
 # - Supporting time-varying SD vectors
 # - Vaccine costs EXCLUDED from PSA (always fixed)
+# - ✅ FIXED: Added VE-coverage rescaling logic
+# - ✅ FIXED: Local implementation of helper functions (no darthtools dependency)
+
+# ============================================================
+# LOCAL HELPER FUNCTIONS (Beta & Gamma Parameterization)
+# ============================================================
+# These implement standard moment-matching for Beta and Gamma distributions
+# without requiring darthtools
+
+# Convert mean and SD to Beta distribution parameters (alpha, beta)
+beta_parm_local <- function(mean_val, sd_val) {
+  # Beta distribution: mean = alpha / (alpha + beta)
+  # Variance = (alpha * beta) / ((alpha + beta)^2 * (alpha + beta + 1))
+  # SD = sqrt(variance)
+  
+  if (mean_val <= 0 || mean_val >= 1 || sd_val <= 0) {
+    return(NULL)
+  }
+  
+  # Method of moments:
+  # alpha + beta = mean * (1 - mean) / sd^2 - 1
+  # alpha = mean * (alpha + beta)
+  # beta = (1 - mean) * (alpha + beta)
+  
+  sum_ab <- mean_val * (1 - mean_val) / (sd_val^2) - 1
+  
+  if (sum_ab <= 0) {
+    return(NULL)
+  }
+  
+  alpha <- mean_val * sum_ab
+  beta <- (1 - mean_val) * sum_ab
+  
+  if (alpha <= 0 || beta <= 0) {
+    return(NULL)
+  }
+  
+  list(alpha = alpha, beta = beta)
+}
+
+# Convert mean and SD to Gamma distribution parameters (shape, rate)
+gamma_parm_local <- function(mean_val, sd_val) {
+  # Gamma distribution: mean = shape / rate = alpha / beta
+  # Variance = shape / rate^2 = alpha / beta^2
+  # SD = sqrt(variance)
+  
+  if (mean_val <= 0 || sd_val <= 0) {
+    return(NULL)
+  }
+  
+  # Method of moments:
+  # shape = mean^2 / variance = mean^2 / sd^2
+  # rate = mean / variance = mean / sd^2
+  
+  shape <- mean_val^2 / (sd_val^2)
+  rate <- mean_val / (sd_val^2)
+  
+  if (shape <= 0 || rate <= 0) {
+    return(NULL)
+  }
+  
+  list(alpha = shape, beta = rate)  # R uses alpha/beta naming for rgamma
+}
+
+# Safe wrapper for Beta parameterization
+beta_safe_local <- function(mean_val, sd_val) {
+  result <- beta_parm_local(mean_val, sd_val)
+  
+  if (is.null(result)) {
+    return(NULL)
+  }
+  
+  # Check if parameters are reasonable
+  if (is.na(result$alpha) || is.na(result$beta) || 
+      result$alpha <= 0 || result$beta <= 0) {
+    return(NULL)
+  }
+  
+  # Return in format expected by rbeta
+  list(mean = mean_val, sd = sd_val, alpha = result$alpha, beta = result$beta)
+}
+
+# Safe wrapper for Gamma parameterization
+gamma_safe_local <- function(mean_val, sd_val) {
+  result <- gamma_parm_local(mean_val, sd_val)
+  
+  if (is.null(result)) {
+    return(NULL)
+  }
+  
+  # Check if parameters are reasonable
+  if (is.na(result$alpha) || is.na(result$beta) || 
+      result$alpha <= 0 || result$beta <= 0) {
+    return(NULL)
+  }
+  
+  # Return in format expected by rgamma
+  list(mean = mean_val, sd = sd_val, alpha = result$alpha, beta = result$beta)
+}
+
+# Clamp values to range [min, max]
+.clamp <- function(x, min_val = 0, max_val = 1) {
+  pmax(min_val, pmin(x, max_val))
+}
+
+# ============================================================
+# MAIN PSA FUNCTION
+# ============================================================
 
 # Generate PSA samples using Excel SD values
 generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
@@ -26,33 +134,52 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
     if (is.null(mean_val) || is.na(mean_val)) {
       return()
     }
+    
     if (dist == "beta") {
       if (mean_val < 1e-5) {
         # For very small probabilities, use gamma instead
-        adj <- .gamma_safe(mean_val, sd_val)
+        adj <- gamma_safe_local(mean_val, sd_val)
         if (is.null(adj)) return()
         
-        flat_means[[nm]] <<- adj$mean
-        flat_sds[[nm]] <<- adj$sd
+        flat_means[[nm]] <<- adj$alpha
+        flat_sds[[nm]] <<- adj$beta
         dists[[nm]] <<- "gamma"
       } else {
-        adj <- .beta_safe(mean_val, sd_val)
+        adj <- beta_safe_local(mean_val, sd_val)
         if (is.null(adj)) return()
         
-        flat_means[[nm]] <<- adj$mean
-        flat_sds[[nm]] <<- adj$sd
-        dists[[nm]] <<- dist
+        flat_means[[nm]] <<- adj$alpha
+        flat_sds[[nm]] <<- adj$beta
+        dists[[nm]] <<- "beta"
       }
     } else if (dist == "gamma") {
-      adj <- .gamma_safe(mean_val, sd_val)
+      adj <- gamma_safe_local(mean_val, sd_val)
       if (is.null(adj)) return()
       
-      flat_means[[nm]] <<- adj$mean
-      flat_sds[[nm]] <<- adj$sd
-      dists[[nm]] <<- dist
+      flat_means[[nm]] <<- adj$alpha
+      flat_sds[[nm]] <<- adj$beta
+      dists[[nm]] <<- "gamma"
     }
   }
+  ## ---- SOCIETAL PRODUCTIVITY COSTS (Gamma distribution) ----
   
+  # Only include if base case has societal costs defined
+  if (!is.null(params$c_prod_Scarring)) {
+    societal_cost_params <- c(
+      "c_prod_Scarring", "c_prod_Single_Amput", "c_prod_Multiple_Amput",
+      "c_prod_Neuro_Disability", "c_prod_Hearing_Loss", "c_prod_Renal_Failure",
+      "c_prod_Seizure", "c_prod_Paralysis"
+    )
+    
+    for (nm in societal_cost_params) {
+      sd_nm <- paste0("sd_", nm)
+      # Only add to PSA if SD exists and is > 0
+      # Otherwise, societal costs remain FIXED at deterministic values
+      if (!is.null(params[[sd_nm]])) {
+        .add_scalar(nm, params[[nm]], params[[sd_nm]], "gamma")
+      }
+    }
+  }
   # Helper to add vector parameter
   # Only adds elements that have valid SDs
   # Elements without SD remain FIXED at deterministic values
@@ -148,257 +275,236 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   }
   
   ## ---- VACCINE EFFECTIVENESS (Beta distribution) ----
-  # VE base values with SD from Excel
-  if (!is.null(params$ve_data)) {
-    for (i in seq_len(nrow(params$ve_data))) {
-      vac_name <- params$ve_data$vaccine[i]
-      ve_mean <- params$ve_data$effectiveness[i]
-      ve_sd <- params$ve_data$sd_effectiveness[i]
-      
-      .add_scalar(paste0("ve_base_", vac_name), ve_mean, ve_sd, "beta")
+  
+  # VE parameters are usually provided as vectors (one per cycle)
+  # If scalar, expand to vector
+  ve_params <- c("ve_MenC", "ve_MenB", "ve_MenACWY", 
+                 "ve_MenABCWY_forB", "ve_MenABCWY_forACWY")
+  
+  for (nm in ve_params) {
+    if (!is.null(params[[nm]])) {
+      sd_nm <- paste0("sd_", nm)
+      .add_vector(nm, params[[nm]], params[[sd_nm]], "beta")
     }
   }
   
-  ## ---- BUILD DAMPACK INPUT ----
+  ## ---- MULTIPLIER PARAMETERS (Gamma for ratios) ----
   
-  param_names <- names(flat_means)
-  dist_types  <- unlist(dists)
-  means_vec   <- unlist(flat_means)
-  sds_vec     <- unlist(flat_sds)
-  
-  dists_params <- lapply(seq_along(param_names), function(i) {
-    c(mean = means_vec[i], sd = sds_vec[i])
-  })
-  names(dists_params) <- param_names
-  
-  param_types <- rep("mean, sd", length(param_names))
-  names(param_types) <- param_names
-  
-  # Generate PSA samples using dampack
-  psa_df <- dampack::gen_psa_samp(
-    params = param_names,
-    dists  = dist_types,
-    parameterization_types = param_types,
-    dists_params = dists_params,
-    nsamp  = n_sim
-  )
-  
-  # Remove nsamp column if present
-  if ("nsamp" %in% names(psa_df)) {
-    psa_df$nsamp <- NULL
+  # Infection rate multipliers
+  for (sg in c("B", "C", "W", "Y")) {
+    nm <- paste0("mult_p_", sg)
+    sd_nm <- paste0("sd_", nm)
+    if (!is.null(params[[nm]]) && !is.null(params[[sd_nm]])) {
+      .add_scalar(nm, params[[nm]], params[[sd_nm]], "gamma")
+    }
   }
   
-  ## ---- CONVERT TO PARAMETER SETS ----
-  
-  # Helper to gather vectors from column names
-  gather_vec <- function(prefix, df_row) {
-    cols <- grep(paste0("^", prefix, "\\d+$"), names(df_row), value = TRUE)
-    if (length(cols) == 0) return(NULL)
-    as.numeric(df_row[, cols, drop = TRUE])
+  # CFR multipliers
+  for (sg in c("B", "C", "W", "Y")) {
+    nm <- paste0("mult_cfr_", sg)
+    sd_nm <- paste0("sd_", nm)
+    if (!is.null(params[[nm]]) && !is.null(params[[sd_nm]])) {
+      .add_scalar(nm, params[[nm]], params[[sd_nm]], "gamma")
+    }
   }
   
-  # Convert to list of parameter sets
-  samples <- lapply(seq_len(n_sim), function(i) {
-    row <- psa_df[i, , drop = FALSE]
-    s <- params  # Start with base parameters (FIXED values preserved)
-    
-    ## Update scalar cost parameters (only if they were in PSA)
-    for (nm in c(cost_seq_params, "c_admin")) {
-      if (nm %in% names(row)) {
-        s[[nm]] <- as.numeric(row[[nm]])
-      }
+  # VE scalers
+  for (sg in c("B", "C", "W", "Y")) {
+    nm <- paste0("ve_scale_", sg)
+    sd_nm <- paste0("sd_", nm)
+    if (!is.null(params[[nm]]) && !is.null(params[[sd_nm]])) {
+      .add_scalar(nm, params[[nm]], params[[sd_nm]], "gamma")
     }
-    
-    # VACCINE PRICES ALWAYS REMAIN FIXED (never updated from PSA)
-    # s$c_MenABCWY, s$c_MenACWY, s$c_MenC, s$c_MenB stay at deterministic values
-    
-    ## Update vector cost parameters (only elements that were in PSA)
-    vcost_psa <- gather_vec("c_IMD_infection", row)
-    if (!is.null(vcost_psa)) {
-      vcost_final <- params$c_IMD_infection
-      psa_indices <- as.numeric(gsub("c_IMD_infection", "", names(row)[grep("^c_IMD_infection\\d+$", names(row))]))
-      for (idx in psa_indices) {
-        if (idx <= length(vcost_final)) {
-          vcost_final[idx] <- pmax(vcost_psa[which(psa_indices == idx)], 0)
-        }
-      }
-      s$c_IMD_infection <- vcost_final
-    }
-    
-    ## Update infection probabilities (only elements that were in PSA)
-    for (nm in prob_inf_params) {
-      vec_psa <- gather_vec(nm, row)
-      if (!is.null(vec_psa)) {
-        vec_final <- params[[nm]]
-        psa_indices <- as.numeric(gsub(nm, "", names(row)[grep(paste0("^", nm, "\\d+$"), names(row))]))
-        for (idx in psa_indices) {
-          if (idx <= length(vec_final)) {
-            vec_final[idx] <- .clamp(vec_psa[which(psa_indices == idx)], 0, 0.999)
-          }
-        }
-        s[[nm]] <- vec_final
-      }
-    }
-    
-    ## Update CFR vectors (only elements that were in PSA)
-    for (nm in cfr_params) {
-      vec_psa <- gather_vec(nm, row)
-      if (!is.null(vec_psa)) {
-        vec_final <- params[[nm]]
-        psa_indices <- as.numeric(gsub(nm, "", names(row)[grep(paste0("^", nm, "\\d+$"), names(row))]))
-        for (idx in psa_indices) {
-          if (idx <= length(vec_final)) {
-            vec_final[idx] <- .clamp(vec_psa[which(psa_indices == idx)], 0, 0.999)
-          }
-        }
-        s[[nm]] <- vec_final
-      }
-    }
-    
-    ## Update background mortality (only elements that were in PSA)
-    vec_bg_psa <- gather_vec("p_bg_mort", row)
-    if (!is.null(vec_bg_psa)) {
-      vec_bg_final <- params$p_bg_mort
-      psa_indices <- as.numeric(gsub("p_bg_mort", "", names(row)[grep("^p_bg_mort\\d+$", names(row))]))
-      for (idx in psa_indices) {
-        if (idx <= length(vec_bg_final)) {
-          vec_bg_final[idx] <- .clamp(vec_bg_psa[which(psa_indices == idx)], 0, 0.999)
-        }
-      }
-      s$p_bg_mort <- vec_bg_final
-    }
-    
-    ## Update sequelae probability (only if in PSA)
-    if ("p_seq_overall" %in% names(row)) {
-      s$p_seq_overall <- .clamp(as.numeric(row[["p_seq_overall"]]), 0, 0.999)
-    }
-    
-    ## Update and normalize sequelae shares (only those that were in PSA)
-    shares_now <- sapply(names(params$w_seq), function(nm) {
-      share_nm <- paste0("share_", nm)
-      if (share_nm %in% names(row)) {
-        as.numeric(row[[share_nm]])
-      } else {
-        params$w_seq[[nm]]
-      }
-    })
-    s$w_seq <- .normalize_shares(shares_now, default_share = params$w_seq)
-    
-    ## Update coverage (only if in PSA)
-    for (nm in c("coverage_ABCWY", "coverage_ACWY", "coverage_C", "coverage_B")) {
-      if (nm %in% names(row)) {
-        s[[nm]] <- .clamp(as.numeric(row[[nm]]), 0, 1)
-      }
-    }
-    
-    ## Update utilities (only if in PSA)
-    for (nm in util_params) {
-      if (nm %in% names(row)) {
-        s[[nm]] <- .clamp(as.numeric(row[[nm]]), 0, 1)
-      }
-    }
-    
-    ## Update VE base values and recalculate VE vectors (only if in PSA)
-    if (!is.null(params$ve_data)) {
-      ve_data_updated <- params$ve_data
-      ve_changed <- FALSE
-      
-      for (j in seq_len(nrow(ve_data_updated))) {
-        vac_name <- ve_data_updated$vaccine[j]
-        ve_nm <- paste0("ve_base_", vac_name)
-        
-        if (ve_nm %in% names(row)) {
-          ve_data_updated$effectiveness[j] <- .clamp(as.numeric(row[[ve_nm]]), 0, 1)
-          ve_changed <- TRUE
-        }
-      }
-      
-      # Only recalculate if VE values changed
-      if (ve_changed) {
-        ve_all <- calculate_all_ve(ve_data_updated, n_cycles = params$n_cycles)
-        
-        s$ve_MenABCWY_forACWY <- ve_all$Effectiveness[ve_all$Vaccine == "MenABCWY_for_SeroACWY"] * s$coverage_ABCWY
-        s$ve_MenABCWY_forB    <- ve_all$Effectiveness[ve_all$Vaccine == "MenABCWY_for_SeroB"]    * s$coverage_ABCWY
-        s$ve_MenACWY          <- ve_all$Effectiveness[ve_all$Vaccine == "MenACWY"]               * s$coverage_ACWY
-        s$ve_MenC             <- ve_all$Effectiveness[ve_all$Vaccine == "MenC"]                  * s$coverage_C
-        s$ve_MenB             <- ve_all$Effectiveness[ve_all$Vaccine == "MenB"]                  * s$coverage_B
-      }
-    }
-    
-    return(s)
-  })
+  }
   
-  log_info(paste("Total parameters varying in PSA:", length(flat_means)))
-  log_info("Vaccine prices excluded from PSA (always fixed)")
-  log_info("PSA samples generated successfully with Excel SD values")
+  # Other multipliers
+  if (!is.null(params$mult_bg_mort)) {
+    .add_scalar("mult_bg_mort", params$mult_bg_mort, params$sd_mult_bg_mort, "gamma")
+  }
+  if (!is.null(params$mult_c_IMD)) {
+    .add_scalar("mult_c_IMD", params$mult_c_IMD, params$sd_mult_c_IMD, "gamma")
+  }
   
-  # Return both samples and the raw PSA dataframe for visualization
-  return(list(
-    samples = samples,
-    psa_df = psa_df
-  ))
+  # Generate all samples for each iteration
+  log_info(paste("Sampling", length(flat_means), "parameters across", n_sim, "iterations..."))
+  
+  samples <- vector("list", n_sim)
+  
+  for (i in seq_len(n_sim)) {
+    if (i %% 100 == 0) log_info(paste("  PSA iteration", i, "of", n_sim))
+    
+    s <- list()
+    
+    # Sample from distributions
+    for (nm in names(flat_means)) {
+      d <- dists[[nm]]
+      param1 <- flat_means[[nm]]  # alpha for both beta and gamma
+      param2 <- flat_sds[[nm]]    # beta for both beta and gamma
+      
+      if (d == "beta") {
+        # Beta distribution: rbeta(n, shape1, shape2)
+        s[[nm]] <- rbeta(1, param1, param2)
+      } else if (d == "gamma") {
+        # Gamma distribution: rgamma(n, shape, rate)
+        s[[nm]] <- rgamma(1, param1, param2)
+      }
+    }
+    
+    # Copy fixed parameters (those without SD in Excel)
+    fixed_scalar_params <- setdiff(names(params), names(flat_means))
+    for (nm in fixed_scalar_params) {
+      if (!is.list(params[[nm]])) {
+        s[[nm]] <- params[[nm]]
+      }
+    }
+    
+    # CRITICAL FIX: Ensure ALL societal cost parameters are present
+    # Even if they weren't sampled (no SD or SD=0/NA), they need to be in samples
+    societal_cost_params <- c(
+      "c_prod_Scarring", "c_prod_Single_Amput", "c_prod_Multiple_Amput",
+      "c_prod_Neuro_Disability", "c_prod_Hearing_Loss", "c_prod_Renal_Failure",
+      "c_prod_Seizure", "c_prod_Paralysis"
+    )
+    
+    for (nm in societal_cost_params) {
+      if (is.null(s[[nm]]) && !is.null(params[[nm]])) {
+        # If not sampled and exists in base params, copy it
+        s[[nm]] <- params[[nm]]
+      } else if (is.null(s[[nm]])) {
+        # If doesn't exist at all, set to 0
+        s[[nm]] <- 0
+      }
+    }
+    
+    samples[[i]] <- s
+  }
+  
+  log_info(paste(n_sim, "PSA samples generated successfully"))
+  
+  # ============================================================
+  # ✅ CRITICAL FIX: VE-COVERAGE RESCALING (NEW LOGIC)
+  # ============================================================
+  # 
+  # PURPOSE: Ensure population-level VE reflects coverage changes
+  # 
+  # RATIONALE: When coverage increases/decreases in PSA, the population-level
+  # vaccine effectiveness should scale proportionally. Without this adjustment,
+  # the model assumes same VE regardless of coverage level.
+  #
+  # EXAMPLE:
+  # - Base case: coverage_ABCWY = 0.95, ve_MenABCWY = 0.85
+  # - PSA sample: coverage_ABCWY = 0.80 (5 percentage points lower)
+  # - Rescaled VE: 0.85 * (0.80/0.95) = 0.716 (proportionally lower)
+  #
+  # This aligns the modular model with the reference model's behavior
+  # and ensures consistency with policy scenarios.
+  #
+  log_info("Applying VE-coverage rescaling to PSA samples...")
+  
+  for (i in seq_len(n_sim)) {
+    s <- samples[[i]]
+    
+    # Get base parameters for rescaling calculations
+    base_cov_ABCWY <- params$coverage_ABCWY
+    base_cov_ACWY <- params$coverage_ACWY
+    base_cov_C <- params$coverage_C
+    base_cov_B <- params$coverage_B
+    
+    # Guard against division by zero
+    eps <- 1e-8
+    
+    # ---- Rescale ACWY-based strategies ----
+    
+    # MenACWY strategy: rescale based on ACWY coverage
+    if (!is.null(s$coverage_ACWY) && base_cov_ACWY > eps && 
+        !is.null(params$ve_MenACWY)) {
+      # For vector VE, rescale element-wise
+      if (is.vector(params$ve_MenACWY) && length(params$ve_MenACWY) > 1) {
+        # Time-varying VE: rescale each cycle
+        s$ve_MenACWY <- params$ve_MenACWY * (s$coverage_ACWY / base_cov_ACWY)
+      } else if (is.numeric(params$ve_MenACWY) && length(params$ve_MenACWY) == 1) {
+        # Scalar VE: rescale the single value
+        s$ve_MenACWY <- params$ve_MenACWY * (s$coverage_ACWY / base_cov_ACWY)
+      }
+      
+      # Clamp to [0, 1]
+      if (!is.null(s$ve_MenACWY)) {
+        s$ve_MenACWY <- .clamp(s$ve_MenACWY, 0, 1)
+      }
+    }
+    
+    # MenABCWY strategy for ACWY component: rescale based on ABCWY coverage
+    if (!is.null(s$coverage_ABCWY) && base_cov_ABCWY > eps && 
+        !is.null(params$ve_MenABCWY_forACWY)) {
+      if (is.vector(params$ve_MenABCWY_forACWY) && length(params$ve_MenABCWY_forACWY) > 1) {
+        s$ve_MenABCWY_forACWY <- params$ve_MenABCWY_forACWY * (s$coverage_ABCWY / base_cov_ABCWY)
+      } else if (is.numeric(params$ve_MenABCWY_forACWY) && length(params$ve_MenABCWY_forACWY) == 1) {
+        s$ve_MenABCWY_forACWY <- params$ve_MenABCWY_forACWY * (s$coverage_ABCWY / base_cov_ABCWY)
+      }
+      
+      if (!is.null(s$ve_MenABCWY_forACWY)) {
+        s$ve_MenABCWY_forACWY <- .clamp(s$ve_MenABCWY_forACWY, 0, 1)
+      }
+    }
+    
+    # ---- Rescale C-only strategy ----
+    
+    # MenC strategy: rescale based on C coverage
+    if (!is.null(s$coverage_C) && base_cov_C > eps && 
+        !is.null(params$ve_MenC)) {
+      if (is.vector(params$ve_MenC) && length(params$ve_MenC) > 1) {
+        s$ve_MenC <- params$ve_MenC * (s$coverage_C / base_cov_C)
+      } else if (is.numeric(params$ve_MenC) && length(params$ve_MenC) == 1) {
+        s$ve_MenC <- params$ve_MenC * (s$coverage_C / base_cov_C)
+      }
+      
+      if (!is.null(s$ve_MenC)) {
+        s$ve_MenC <- .clamp(s$ve_MenC, 0, 1)
+      }
+    }
+    
+    # ---- Rescale B-containing strategies ----
+    
+    # MenB strategy: rescale based on B coverage
+    if (!is.null(s$coverage_B) && base_cov_B > eps && 
+        !is.null(params$ve_MenB)) {
+      if (is.vector(params$ve_MenB) && length(params$ve_MenB) > 1) {
+        s$ve_MenB <- params$ve_MenB * (s$coverage_B / base_cov_B)
+      } else if (is.numeric(params$ve_MenB) && length(params$ve_MenB) == 1) {
+        s$ve_MenB <- params$ve_MenB * (s$coverage_B / base_cov_B)
+      }
+      
+      if (!is.null(s$ve_MenB)) {
+        s$ve_MenB <- .clamp(s$ve_MenB, 0, 1)
+      }
+    }
+    
+    # MenABCWY strategy for B component: rescale based on ABCWY coverage
+    if (!is.null(s$coverage_ABCWY) && base_cov_ABCWY > eps && 
+        !is.null(params$ve_MenABCWY_forB)) {
+      if (is.vector(params$ve_MenABCWY_forB) && length(params$ve_MenABCWY_forB) > 1) {
+        s$ve_MenABCWY_forB <- params$ve_MenABCWY_forB * (s$coverage_ABCWY / base_cov_ABCWY)
+      } else if (is.numeric(params$ve_MenABCWY_forB) && length(params$ve_MenABCWY_forB) == 1) {
+        s$ve_MenABCWY_forB <- params$ve_MenABCWY_forB * (s$coverage_ABCWY / base_cov_ABCWY)
+      }
+      
+      if (!is.null(s$ve_MenABCWY_forB)) {
+        s$ve_MenABCWY_forB <- .clamp(s$ve_MenABCWY_forB, 0, 1)
+      }
+    }
+    
+    samples[[i]] <- s
+  }
+  
+  log_info("VE-coverage rescaling complete")
+  
+  # ============================================================
+  # END VE-COVERAGE RESCALING
+  # ============================================================
+  
+  list(samples = samples, psa_df = NULL)
 }
 
-# Run PSA with parallel processing
-# run_psa <- function(params, n_sim = 1000, wtp = 50000) {
-#   # Setup parallel cluster
-#   n_cores <- parallel::detectCores() - 1
-#   if (is.na(n_cores) || n_cores < 1) n_cores <- 1
-#   
-#   cl <- parallel::makeCluster(n_cores)
-#   doParallel::registerDoParallel(cl)
-#   
-#   log_info(paste("Running", n_sim, "PSA simulations on", n_cores, "cores..."))
-#   
-#   # Generate all parameter samples
-#   psa_output <- generate_psa_samples(params, n_sim = n_sim)
-#   samp <- psa_output$samples
-#   psa_df <- psa_output$psa_df
-#   
-#   # Run simulations in parallel
-#   res <- foreach::foreach(
-#     i = 1:n_sim,
-#     .combine = 'rbind',
-#     .packages = c('dplyr', 'tibble', 'darthtools'),
-#     .export = c(
-#       # Functions
-#       "eval_all_strategies", "eval_strategy", "build_transition_array",
-#       "run_markov", "get_serogroup_ve", "shift_ve", ".clamp",
-#       "get_state_costs", "get_state_utils", "vaccination_costs",
-#       # Logging functions (CRITICAL!)
-#       "log_info", "log_warn", "log_error",
-#       # Global variables
-#       "v_strats", "v_states", "n_states", "c_prod_societal",
-#       "v_discount_cost", "v_discount_qaly", "n_cohort"
-#     )
-#   ) %dopar% {
-#     # Evaluate all strategies for this parameter set
-#     r_i <- eval_all_strategies(samp[[i]])
-#     
-#     # Return results as tibble
-#     tibble::tibble(
-#       sim = i,
-#       Strategy = names(r_i),
-#       Cost  = vapply(r_i, function(x) x$cost, numeric(1)),
-#       QALYs = vapply(r_i, function(x) x$qalys, numeric(1))
-#     )
-#   }
-#   
-#   # Stop parallel cluster
-#   parallel::stopCluster(cl)
-#   
-#   # Calculate NMB
-#   res <- res %>%
-#     dplyr::mutate(NMB = QALYs * wtp - Cost)
-#   
-#   log_info("PSA completed successfully")
-#   
-#   # Return both results and parameter distributions
-#   return(list(
-#     results = res,
-#     psa_df = psa_df
-#   ))
-# }
 # Run PSA with parallel processing (cleaned up & reproducible)
 run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
   # Determine cores (at least 1; cap at n_sim to avoid idle workers)
@@ -417,9 +523,7 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
   log_info(paste("Running", n_sim, "PSA simulations on", n_cores, "cores..."))
   
   # Generate parameter samples (also reproducible)
-  psa_output <- generate_psa_samples(params, n_sim = n_sim, seed = seed)
-  samp   <- psa_output$samples
-  psa_df <- psa_output$psa_df
+  samp <- generate_psa_samples(params, n_sim = n_sim, seed = seed)
   
   # One-time export of everything workers need
   export_names <- c(
@@ -432,7 +536,7 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
     # logging helpers
     "log_info", "log_warn", "log_error",
     # globals
-    "v_strats", "v_states", "n_states", "c_prod_societal",
+    "v_strats", "v_states", "n_states",
     "v_discount_cost", "v_discount_qaly", "n_cohort"
   )
   parallel::clusterExport(cl, unique(export_names), envir = environment())
@@ -440,7 +544,7 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
   # Ensure required packages are loaded on workers (for nested function calls)
   parallel::clusterEvalQ(cl, {
     suppressPackageStartupMessages({
-      library(dplyr); library(tibble); library(darthtools)
+      library(dplyr); library(tibble)
     })
     NULL
   })
@@ -464,11 +568,8 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
   
   log_info("PSA completed successfully")
   
-  # Return both results and the PSA parameter draws (for plotting/diagnostics)
-  list(
-    results = res,
-    psa_df  = psa_df
-  )
+  # Return PSA results
+  res
 }
 
 # Create PSA objects for dampack

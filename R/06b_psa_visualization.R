@@ -182,8 +182,8 @@ plot_psa_scalar_distributions <- function(psa_df, params_base,
     # They are stored in params_base$ve_data$effectiveness instead.
     if (is.null(det_value) || !is.numeric(det_value) || length(det_value) != 1) {
       # Try to get VE from ve_data if it's a VE parameter
-      if (grepl("^ve_base_", param)) {
-        vaccine_name <- gsub("ve_base_", "", param)
+      if (grepl("^ve_", param)) {
+        vaccine_name <- gsub("ve_", "", param)
         if (!is.null(params_base$ve_data)) {
           ve_match <- params_base$ve_data$effectiveness[params_base$ve_data$vaccine == vaccine_name]
           if (length(ve_match) > 0 && is.numeric(ve_match)) {

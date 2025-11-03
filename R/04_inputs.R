@@ -143,7 +143,29 @@ get_base_params <- function() {
     
     log_info("Societal productivity costs loaded from Excel")
   }
+  # Read SD for societal costs (if they should vary in PSA)
+  # If no SD column exists, these costs remain FIXED
+  get_sd_societal <- function(nm) {
+    if (!"sd" %in% names(soc_costs)) {
+      return(NA)
+    }
+    v <- soc_costs$sd[soc_costs$Name == nm]
+    if (length(v) == 0) {
+      return(NA)
+    }
+    as.numeric(v[1])
+  }
   
+  sd_c_prod_societal <- c(
+    Scarring         = get_sd_societal("Scarring"),
+    Single_Amput     = get_sd_societal("Single_Amput"),
+    Multiple_Amput   = get_sd_societal("Multiple_Amput"),
+    Neuro_Disability = get_sd_societal("Neuro_Disability"),
+    Hearing_Loss     = get_sd_societal("Hearing_Loss"),
+    Renal_Failure    = get_sd_societal("Renal_Failure"),
+    Seizure          = get_sd_societal("Seizure"),
+    Paralysis        = get_sd_societal("Paralysis")
+  )
   # ============================================================
   # STEP 5: Vaccine Prices
   # ============================================================
@@ -179,7 +201,7 @@ get_base_params <- function() {
     }
     as.numeric(v[1])
   }
- 
+  
   c_MenABCWY <- getp("c_MenABCWY")
   c_MenACWY  <- getp("c_MenACWY")
   c_MenC     <- getp("c_MenC")
@@ -771,13 +793,49 @@ get_base_params <- function() {
     u_Dead = u_Dead,
     sd_u_Dead = sd_u_Dead,
     
-    # Vaccine effectiveness (vectors)
+    # Vaccine effectiveness (vectors) - INTERNAL NAMING
     ve_MenABCWY_forACWY = ve_MenABCWY_forACWY,
     ve_MenABCWY_forB = ve_MenABCWY_forB,
     ve_MenACWY = ve_MenACWY,
     ve_MenC = ve_MenC,
     ve_MenB = ve_MenB,
+    
+    # Vaccine effectiveness (vectors) - EXTERNAL NAMING (for PSA/downstream code)
+    ve_base_MenABCWY_for_SeroACWY = ve_MenABCWY_forACWY,
+    ve_base_MenABCWY_for_SeroB = ve_MenABCWY_forB,
+    ve_base_MenACWY = ve_MenACWY,
+    ve_base_MenC = ve_MenC,
+    ve_base_MenB = ve_MenB,
+    
+    # SDs for VE parameters (for PSA uncertainty)
+    sd_ve_base_MenABCWY_for_SeroACWY = ve_data$sd_effectiveness[ve_data$vaccine == "MenABCWY_for_SeroACWY"],
+    sd_ve_base_MenABCWY_for_SeroB = ve_data$sd_effectiveness[ve_data$vaccine == "MenABCWY_for_SeroB"],
+    sd_ve_base_MenACWY = ve_data$sd_effectiveness[ve_data$vaccine == "MenACWY"],
+    sd_ve_base_MenC = ve_data$sd_effectiveness[ve_data$vaccine == "MenC"],
+    sd_ve_base_MenB = ve_data$sd_effectiveness[ve_data$vaccine == "MenB"],
+    
+    # Store ve_data for reference
     ve_data = ve_data,  # Store for PSA recalculation
+    
+    # Societal productivity costs (from Excel)
+    c_prod_Scarring = c_prod_societal["Scarring"],
+    c_prod_Single_Amput = c_prod_societal["Single_Amput"],
+    c_prod_Multiple_Amput = c_prod_societal["Multiple_Amput"],
+    c_prod_Neuro_Disability = c_prod_societal["Neuro_Disability"],
+    c_prod_Hearing_Loss = c_prod_societal["Hearing_Loss"],
+    c_prod_Renal_Failure = c_prod_societal["Renal_Failure"],
+    c_prod_Seizure = c_prod_societal["Seizure"],
+    c_prod_Paralysis = c_prod_societal["Paralysis"],
+    
+    # SDs for societal productivity costs (for PSA)
+    sd_c_prod_Scarring = sd_c_prod_societal["Scarring"],
+    sd_c_prod_Single_Amput = sd_c_prod_societal["Single_Amput"],
+    sd_c_prod_Multiple_Amput = sd_c_prod_societal["Multiple_Amput"],
+    sd_c_prod_Neuro_Disability = sd_c_prod_societal["Neuro_Disability"],
+    sd_c_prod_Hearing_Loss = sd_c_prod_societal["Hearing_Loss"],
+    sd_c_prod_Renal_Failure = sd_c_prod_societal["Renal_Failure"],
+    sd_c_prod_Seizure = sd_c_prod_societal["Seizure"],
+    sd_c_prod_Paralysis = sd_c_prod_societal["Paralysis"],
     
     # Multipliers for sensitivity analysis (OWSA)
     mult_p_B = 1.0,
