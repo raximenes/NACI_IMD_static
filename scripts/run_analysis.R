@@ -106,14 +106,14 @@ message("[INFO] All model files loaded successfully\n")
 # ============================================================
 
 # Analysis settings
-#N_SIMULATIONS <-2500L       # Number of PSA simulations
+N_SIMULATIONS <-2500L       # Number of PSA simulations
 COHORT_SIZE <- n_cohort       # Number of individuals in the cohort -  defined in 02_globals.R
 
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
-# ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
+ANALYSIS_PERSPECTIVE <-  "healthcare"  # "healthcare", "societal", or "both"
 
 # PSA options
-REUSE_PSA_SAMPLES <- TRUE   # Set to TRUE to reuse existing PSA samples (if available)
+REUSE_PSA_SAMPLES <- FALSE   # Set to TRUE to reuse existing PSA samples (if available)
 # Set to FALSE to generate new PSA samples
 
 # OWSA Configuration - EDIT HERE

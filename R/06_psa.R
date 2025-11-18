@@ -123,12 +123,13 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   dists <- list()
   
   # Helper to add scalar parameter
+  # CRITICAL CHECK #1: Only include in PSA if SD is valid
   # Only adds to PSA if SD is valid (not NULL, NA, or <= 0)
   # Otherwise parameter stays FIXED at its deterministic value
   .add_scalar <- function(nm, mean_val, sd_val, dist) {
     # Check if parameter should be fixed (no SD)
     if (is.null(sd_val) || is.na(sd_val) || sd_val <= 0) {
-      return()
+      return()  # Parameter will remain FIXED at mean_val throughout all PSA iterations
     }
     
     if (is.null(mean_val) || is.na(mean_val)) {
@@ -343,10 +344,10 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
       
       if (d == "beta") {
         # Beta distribution: rbeta(n, shape1, shape2)
-        s[[nm]] <- rbeta(1, param1, param2)
+        s[[nm]] <- rbeta(1, param1, param2) # used for probabilities/utilities
       } else if (d == "gamma") {
         # Gamma distribution: rgamma(n, shape, rate)
-        s[[nm]] <- rgamma(1, param1, param2)
+        s[[nm]] <- rgamma(1, param1, param2) # used for costs/multipliers
       }
     }
     
@@ -554,7 +555,7 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
     i = seq_len(n_sim),
     .combine = "rbind"
   ) %dopar% {
-    r_i <- eval_all_strategies(samp[[i]])
+    r_i <- eval_all_strategies(samp[[i]]) # here the sample is used
     tibble::tibble(
       sim = i,
       Strategy = names(r_i),
