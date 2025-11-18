@@ -1,3 +1,21 @@
+###############################################################################
+# 05_model_core.R - UPDATED VERSION - 18/11/25
+#
+# Purpose:
+#   Core functions for the Markov model including:
+#   - Vaccine effectiveness calculation by serogroup
+#   - Transition probability array construction
+#   - Markov cohort simulation with flow tracking
+#   - Cost and utility assignment (INCLUDING IMD infection costs)!!!
+#   - Strategy evaluation and summarization
+#
+# Key Updates:
+#   - Added c_IMD_infection (age-specific) to get_state_costs()
+#   - Infection states now have proper cost assignment
+#   - Maintained societal perspective productivity costs
+#   - Removed commented-out code sections for clarity
+###############################################################################
+
 ## ======================
 ## 5) Model Core Functions
 ## ======================
@@ -208,129 +226,187 @@ run_markov <- function(a_P, params) {
   return(list(trace = m_M, flow = a_flow))
 }
 
-# Get state costs (with societal perspective adjustment)
-# get_state_costs <- function(params, t) {
-#   # Sequelae costs
-#   c_seq <- c(
-#     Scarring         = params$c_Scarring,
-#     Single_Amput     = params$c_Single_Amput,
-#     Multiple_Amput   = params$c_Multiple_Amput,
-#     Neuro_Disability = params$c_Neuro_Disab,
-#     Hearing_Loss     = params$c_Hearing_Loss,
-#     Renal_Failure    = params$c_Renal_Failure,
-#     Seizure          = params$c_Seizure,
-#     Paralysis        = params$c_Paralysis
-#   )
-#   
-#   # Add productivity costs if societal perspective
-#   if (identical(params$perspective, "societal")) {
-#     # Build societal costs from individual parameters
-#     c_prod <- c(
-#       Scarring         = params$c_prod_Scarring,
-#       Single_Amput     = params$c_prod_Single_Amput,
-#       Multiple_Amput   = params$c_prod_Multiple_Amput,
-#       Neuro_Disability = params$c_prod_Neuro_Disability,
-#       Hearing_Loss     = params$c_prod_Hearing_Loss,
-#       Renal_Failure    = params$c_prod_Renal_Failure,
-#       Seizure          = params$c_prod_Seizure,
-#       Paralysis        = params$c_prod_Paralysis
-#     )
-#     c_seq <- c_seq + c_prod[names(c_seq)]
-#   }
-#   
-#   # Infection costs (with multiplier)
-#   c_inf <- c(
-#     SeroB_Infect = params$c_IMD_infection[t],
-#     SeroC_Infect = params$c_IMD_infection[t],
-#     SeroW_Infect = params$c_IMD_infection[t],
-#     SeroY_Infect = params$c_IMD_infection[t]
-#   ) * params$mult_c_IMD
-#   
-#   # Other state costs
-#   c_other <- c(
-#     Healthy = params$c_Healthy,
-#     Dead_IMD = params$c_Dead,
-#     Background_Mortality = params$c_Dead
-#   )
-#   
-#   # Combine in correct state order
-#   costs <- setNames(
-#     c(c_other["Healthy"], c_inf, c_seq, c_other[c("Dead_IMD", "Background_Mortality")]),
-#     v_states
-#   )
-#   
-#   return(costs)
-# }
+# Get state costs (with IMD infection costs and societal perspective adjustment)
 get_state_costs <- function(params, t) {
   
-  # Base healthcare costs (must exist)
-  costs <- c(
-    Healthy = params$c_Healthy,
-    Scarring = params$c_Scarring,
-    Single_Amput = params$c_Single_Amput,
-    Multiple_Amput = params$c_Multiple_Amput,
+  # ============================================================
+  # INFECTION COSTS (age-specific, applied with multiplier)
+  # ============================================================
+  # Get the age-specific infection cost for cycle t
+  # Apply the cost multiplier for sensitivity analysis
+  c_inf <- c(
+    SeroB_Infect = params$c_IMD_infection[t],
+    SeroC_Infect = params$c_IMD_infection[t],
+    SeroW_Infect = params$c_IMD_infection[t],
+    SeroY_Infect = params$c_IMD_infection[t]
+  ) * params$mult_c_IMD
+  
+  # ============================================================
+  # SEQUELAE COSTS (annual, constant across cycles)
+  # ============================================================
+  c_seq <- c(
+    Scarring         = params$c_Scarring,
+    Single_Amput     = params$c_Single_Amput,
+    Multiple_Amput   = params$c_Multiple_Amput,
     Neuro_Disability = params$c_Neuro_Disab,
-    Hearing_Loss = params$c_Hearing_Loss,
-    Renal_Failure = params$c_Renal_Failure,
-    Seizure = params$c_Seizure,
-    Paralysis = params$c_Paralysis,
-    Death = 0
+    Hearing_Loss     = params$c_Hearing_Loss,
+    Renal_Failure    = params$c_Renal_Failure,
+    Seizure          = params$c_Seizure,
+    Paralysis        = params$c_Paralysis
   )
   
-  # Verify all costs are numeric
-  if (any(is.na(costs)) || any(!is.numeric(costs))) {
-    na_states <- names(costs)[is.na(costs)]
-    stop(sprintf("Base healthcare costs have NA values for: %s", 
-                 paste(na_states, collapse = ", ")))
-  }
-  
-  # Add societal productivity costs if perspective is societal
-  if (!is.null(params$perspective) && params$perspective == "societal") {
+  # ============================================================
+  # ADD SOCIETAL PRODUCTIVITY COSTS (if perspective = "societal")
+  # ============================================================
+  if (identical(params$perspective, "societal")) {
     
-    # Define sequelae states (exclude Healthy and Death)
-    sequelae_states <- c("Scarring", "Single_Amput", "Multiple_Amput",
-                         "Neuro_Disability", "Hearing_Loss", "Renal_Failure",
-                         "Seizure", "Paralysis")
+    # List of sequelae states
+    sequelae_states <- c(
+      "Scarring", "Single_Amput", "Multiple_Amput", "Neuro_Disability",
+      "Hearing_Loss", "Renal_Failure", "Seizure", "Paralysis"
+    )
     
-    # Add productivity costs to each sequelae state
+    # Add productivity costs with ROBUST validation
     for (state in sequelae_states) {
+      # Construct parameter name
       prod_cost_param <- paste0("c_prod_", state)
+      
+      # Get productivity cost (with multiple safety checks)
       prod_cost <- params[[prod_cost_param]]
       
-      # Safety check: only add if productivity cost exists and is valid
-      if (!is.null(prod_cost) && !is.na(prod_cost) && is.numeric(prod_cost)) {
-        costs[state] <- costs[state] + prod_cost
-      } else {
-        warning(sprintf("Productivity cost %s is NULL/NA or invalid. Using 0.", prod_cost_param))
-        # costs[state] remains unchanged (no productivity cost added)
+      # ── VALIDATION CHAIN ──
+      # Check 1: Does parameter exist?
+      if (is.null(prod_cost)) {
+        # Parameter doesn't exist - use 0
+        prod_cost <- 0
       }
+      
+      # Check 2: Is it NA?
+      if (is.na(prod_cost)) {
+        # Parameter is NA - use 0
+        prod_cost <- 0
+      }
+      
+      # Check 3: Is it numeric?
+      if (!is.numeric(prod_cost)) {
+        # Parameter is not numeric - use 0
+        prod_cost <- 0
+      }
+      
+      # Check 4: Is it negative?
+      if (prod_cost < 0) {
+        # Negative cost doesn't make sense - use 0
+        warning(sprintf(
+          "Negative productivity cost for %s: %.2f. Using 0.",
+          state, prod_cost
+        ))
+        prod_cost <- 0
+      }
+      
+      # ADD to sequelae cost
+      c_seq[state] <- c_seq[state] + prod_cost
     }
   }
-  # Final verification: ensure no NA values in the result
+  
+  # ============================================================
+  # OTHER STATE COSTS
+  # ============================================================
+  c_other <- c(
+    Healthy              = params$c_Healthy,
+    Dead_IMD             = params$c_Dead,
+    Background_Mortality = params$c_Dead
+  )
+  
+  # ============================================================
+  # COMBINE ALL COSTS IN STATE ORDER
+  # ============================================================
+  # Ensure costs are in the same order as v_states:
+  # "Healthy", "SeroB_Infect", "SeroC_Infect", "SeroW_Infect", "SeroY_Infect",
+  # "Scarring", "Single_Amput", "Multiple_Amput", "Neuro_Disability",
+  # "Hearing_Loss", "Renal_Failure", "Seizure", "Paralysis",
+  # "Dead_IMD", "Background_Mortality"
+  
+  costs <- setNames(
+    c(
+      c_other["Healthy"],
+      c_inf,  # All 4 infection states
+      c_seq,  # All 8 sequelae states
+      c_other[c("Dead_IMD", "Background_Mortality")]
+    ),
+    v_states
+  )
+  
+  # ============================================================
+  # VALIDATION
+  # ============================================================
+  # Check for NA values
   if (any(is.na(costs))) {
     na_states <- names(costs)[is.na(costs)]
-    stop(sprintf("FINAL costs vector has NA values for states: %s. Check Excel data.", 
-                 paste(na_states, collapse = ", ")))
+    
+    # Provide diagnostic information
+    error_msg <- sprintf(
+      "Cost vector has NA values for states: %s at cycle %d.\n\nDiagnostics:\n",
+      paste(na_states, collapse = ", "), t
+    )
+    
+    # Check which components have NAs
+    if (any(is.na(c_other))) {
+      error_msg <- paste0(error_msg, "  - c_other has NAs: ", paste(names(c_other)[is.na(c_other)], collapse = ", "), "\n")
+    }
+    if (any(is.na(c_inf))) {
+      error_msg <- paste0(error_msg, "  - c_inf has NAs: ", paste(names(c_inf)[is.na(c_inf)], collapse = ", "), "\n")
+    }
+    if (any(is.na(c_seq))) {
+      error_msg <- paste0(error_msg, "  - c_seq has NAs: ", paste(names(c_seq)[is.na(c_seq)], collapse = ", "), "\n")
+    }
+    
+    # Check parameters
+    error_msg <- paste0(error_msg, "\nParameter values:\n")
+    error_msg <- paste0(error_msg, "  - params$c_Healthy: ", params$c_Healthy, "\n")
+    error_msg <- paste0(error_msg, "  - params$c_Dead: ", params$c_Dead, "\n")
+    error_msg <- paste0(error_msg, "  - params$c_IMD_infection[", t, "]: ", params$c_IMD_infection[t], "\n")
+    error_msg <- paste0(error_msg, "  - params$mult_c_IMD: ", params$mult_c_IMD, "\n")
+    error_msg <- paste0(error_msg, "  - params$perspective: ", params$perspective, "\n")
+    
+    stop(error_msg)
+  }
+  
+  # Check for negative costs
+  if (any(costs < 0)) {
+    neg_states <- names(costs)[costs < 0]
+    stop(sprintf(
+      "Cost vector has negative values for states: %s at cycle %d.",
+      paste(neg_states, collapse = ", "), t
+    ))
+  }
+  
+  # Check for correct length
+  if (length(costs) != 15) {
+    stop(sprintf(
+      "Cost vector should have 15 elements but has %d at cycle %d.",
+      length(costs), t
+    ))
   }
   return(costs)
 }
+
 # Get state utilities
 get_state_utils <- function(params) {
   utils <- c(
-    Healthy          = params$u_Healthy,
-    SeroB_Infect     = params$u_IMD,
-    SeroC_Infect     = params$u_IMD,
-    SeroW_Infect     = params$u_IMD,
-    SeroY_Infect     = params$u_IMD,
-    Scarring         = params$u_Scarring,
-    Single_Amput     = params$u_Single_Amput,
-    Multiple_Amput   = params$u_Multiple_Amput,
-    Neuro_Disability = params$u_Neuro_Disability,
-    Hearing_Loss     = params$u_Hearing_Loss,
-    Renal_Failure    = params$u_Renal_Failure,
-    Seizure          = params$u_Seizure,
-    Paralysis        = params$u_Paralysis,
-    Dead_IMD         = params$u_Dead,
+    Healthy              = params$u_Healthy,
+    SeroB_Infect         = params$u_IMD,
+    SeroC_Infect         = params$u_IMD,
+    SeroW_Infect         = params$u_IMD,
+    SeroY_Infect         = params$u_IMD,
+    Scarring             = params$u_Scarring,
+    Single_Amput         = params$u_Single_Amput,
+    Multiple_Amput       = params$u_Multiple_Amput,
+    Neuro_Disability     = params$u_Neuro_Disability,
+    Hearing_Loss         = params$u_Hearing_Loss,
+    Renal_Failure        = params$u_Renal_Failure,
+    Seizure              = params$u_Seizure,
+    Paralysis            = params$u_Paralysis,
+    Dead_IMD             = params$u_Dead,
     Background_Mortality = params$u_Dead
   )
   

@@ -1,17 +1,34 @@
+###############################################################################
+# 06_psa_functions.R - FULLY COMMENTED VERSION
+#
+# Purpose: Probabilistic Sensitivity Analysis (PSA) implementation
+#
+# Key Components:
+#   1. Local helper functions for Beta/Gamma parameterization
+#   2. PSA sample generation using Excel SD values
+#   3. Parallel PSA execution
+#   4. CEAC/EVPI object creation for dampack
+#
+# Critical Features:
+#   - Uses SD values directly from Excel (no arbitrary assumptions)
+#   - Supports time-varying parameters (vectors)
+#   - Vaccine costs ALWAYS fixed (excluded from PSA)
+#   - VE-coverage rescaling for consistency
+#   - Parallel processing for speed
+###############################################################################
+
 ## ======================
-## 6) PSA Functions - FULLY CORRECTED VERSION
+## 6) PSA Functions
 ## ======================
-# - Using SD values directly from Excel (no fixed values)
-# - Supporting time-varying SD vectors
-# - Vaccine costs EXCLUDED from PSA (always fixed)
-# - ✅ FIXED: Added VE-coverage rescaling logic
-# - ✅ FIXED: Local implementation of helper functions (no darthtools dependency)
 
 # ============================================================
 # LOCAL HELPER FUNCTIONS (Beta & Gamma Parameterization)
 # ============================================================
-# These implement standard moment-matching for Beta and Gamma distributions
-# without requiring darthtools
+# These functions convert (mean, SD) to distribution parameters
+# Required because R's rbeta() and rgamma() need shape parameters,
+# not mean and SD
+#
+# WHY LOCAL? To avoid darthtools dependency and have full control
 
 # Convert mean and SD to Beta distribution parameters (alpha, beta)
 beta_parm_local <- function(mean_val, sd_val) {
@@ -23,7 +40,7 @@ beta_parm_local <- function(mean_val, sd_val) {
     return(NULL)
   }
   
-  # Method of moments:
+  # Method of moments (solve for alpha and beta from mean and variance):
   # alpha + beta = mean * (1 - mean) / sd^2 - 1
   # alpha = mean * (alpha + beta)
   # beta = (1 - mean) * (alpha + beta)
@@ -54,7 +71,7 @@ gamma_parm_local <- function(mean_val, sd_val) {
     return(NULL)
   }
   
-  # Method of moments:
+  # Method of moments (solve for shape and rate from mean and variance):
   # shape = mean^2 / variance = mean^2 / sd^2
   # rate = mean / variance = mean / sd^2
   
@@ -68,7 +85,7 @@ gamma_parm_local <- function(mean_val, sd_val) {
   list(alpha = shape, beta = rate)  # R uses alpha/beta naming for rgamma
 }
 
-# Safe wrapper for Beta parameterization
+# Safe wrapper for Beta parameterization with validation
 beta_safe_local <- function(mean_val, sd_val) {
   result <- beta_parm_local(mean_val, sd_val)
   
@@ -110,22 +127,75 @@ gamma_safe_local <- function(mean_val, sd_val) {
 }
 
 # ============================================================
-# MAIN PSA FUNCTION
+# MAIN PSA FUNCTION: Generate Parameter Samples
 # ============================================================
+#
+# PURPOSE: Create n_sim sets of parameter values by sampling from
+#          distributions defined by (mean, SD) pairs from Excel
+#
+# THREE-LIST ARCHITECTURE:
+# ───────────────────────────────────────────────────────────
+# This function builds 3 parallel lists that work together:
+#
+# 1. flat_means: Shape/location parameters (alpha for Beta/Gamma)
+#    - For Beta: this is shape1 (alpha)
+#    - For Gamma: this is shape (alpha)
+#
+# 2. flat_sds: Scale parameters (beta for both)
+#    - For Beta: this is shape2 (beta)
+#    - For Gamma: this is rate (beta)
+#
+# 3. dists: Distribution type ("beta" or "gamma")
+#    - Tells us which R function to call during sampling
+#
+# WHY 3 LISTS?
+# ────────────
+# - R's rbeta() and rgamma() require SHAPE PARAMETERS, not (mean, SD)
+# - We convert (mean, SD) → (shape params) ONCE before sampling
+# - During sampling (loop), we look up the shape params + dist type
+# - This is MUCH faster than re-converting for each iteration
+#
+# EXAMPLE:
+# ────────
+# Parameter: coverage_ABCWY with mean=0.90, SD=0.05
+# 
+# Step 1: Convert to Beta parameters
+#   beta_safe_local(0.90, 0.05) → alpha=153, beta=17
+#
+# Step 2: Store in lists
+#   flat_means[["coverage_ABCWY"]] ← 153
+#   flat_sds[["coverage_ABCWY"]]   ← 17
+#   dists[["coverage_ABCWY"]]      ← "beta"
+#
+# Step 3: Sample (in loop, 1000 times)
+#   for (i in 1:1000) {
+#     value <- rbeta(1, flat_means[["coverage_ABCWY"]], 
+#                       flat_sds[["coverage_ABCWY"]])
+#   }
+#
+# VECTOR PARAMETERS:
+# ──────────────────
+# For time-varying params (e.g., p_B with 89 elements):
+#   - We store as p_B1, p_B2, ..., p_B89
+#   - Each gets its own entry in the 3 lists
+#   - After sampling, we reconstruct the vector
 
-# Generate PSA samples using Excel SD values
 generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   set.seed(seed)
   log_info(paste("Generating", n_sim, "PSA samples using Excel SD values..."))
   
-  flat_means <- list()
-  flat_sds <- list()
-  dists <- list()
+  flat_means <- list() # Will store shape1/shape parameters
+  flat_sds <- list() # Will store shape2/rate parameters
+  dists <- list() # Will store "beta" or "gamma"
   
-  # Helper to add scalar parameter
-  # CRITICAL CHECK #1: Only include in PSA if SD is valid
-  # Only adds to PSA if SD is valid (not NULL, NA, or <= 0)
-  # Otherwise parameter stays FIXED at its deterministic value
+  # This function:
+  # 1. Checks if SD is valid (exists, not NA, > 0)
+  # 2. If no valid SD → parameter stays FIXED at mean value
+  # 3. If valid SD → converts (mean, SD) to shape params
+  # 4. Adds to the 3 lists
+  #
+  # <<super>> syntax: modifies parent environment lists
+  
   .add_scalar <- function(nm, mean_val, sd_val, dist) {
     # Check if parameter should be fixed (no SD)
     if (is.null(sd_val) || is.na(sd_val) || sd_val <= 0) {
@@ -328,19 +398,29 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   
   # Generate all samples for each iteration
   log_info(paste("Sampling", length(flat_means), "parameters across", n_sim, "iterations..."))
+
+  # ============================================================
+  # SAMPLING LOOP: Generate n_sim parameter sets 
+  # ============================================================
   
+  # For each iteration:
+  # 1. Sample from distributions using the 3 lists
+  # 2. Copy fixed parameters (those not in flat_means)
+  # 3. Reconstruct vectors from individual samples
+  # 4. Store complete parameter set
   samples <- vector("list", n_sim)
   
   for (i in seq_len(n_sim)) {
     if (i %% 100 == 0) log_info(paste("  PSA iteration", i, "of", n_sim))
     
-    s <- list()
+    s <- list() # This iteration's parameter set
     
-    # Sample from distributions
+    # ── Step 1: Sample from distributions ──
+    # This is where the 3 lists are used together!
     for (nm in names(flat_means)) {
-      d <- dists[[nm]]
-      param1 <- flat_means[[nm]]  # alpha for both beta and gamma
-      param2 <- flat_sds[[nm]]    # beta for both beta and gamma
+      d <- dists[[nm]]            # Get distribution type
+      param1 <- flat_means[[nm]]  # Get shape1/shape parameter
+      param2 <- flat_sds[[nm]]    # Get shape2/rate parameter
       
       if (d == "beta") {
         # Beta distribution: rbeta(n, shape1, shape2)
@@ -351,7 +431,8 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
       }
     }
     
-    # Copy fixed parameters (those without SD in Excel)
+    # ── Step 2: Copy fixed parameters ──
+    # Parameters NOT in flat_means stay at deterministic values
     fixed_scalar_params <- setdiff(names(params), names(flat_means))
     for (nm in fixed_scalar_params) {
       if (!is.list(params[[nm]])) {
@@ -359,8 +440,8 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
       }
     }
     
-    # CRITICAL FIX: Ensure ALL societal cost parameters are present
-    # Even if they weren't sampled (no SD or SD=0/NA), they need to be in samples
+    # ── Step 3: Ensure societal costs are present ──
+    # Even if not sampled (no SD), they need to exist in the parameter set
     societal_cost_params <- c(
       "c_prod_Scarring", "c_prod_Single_Amput", "c_prod_Multiple_Amput",
       "c_prod_Neuro_Disability", "c_prod_Hearing_Loss", "c_prod_Renal_Failure",
@@ -370,7 +451,7 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
     for (nm in societal_cost_params) {
       if (is.null(s[[nm]]) && !is.null(params[[nm]])) {
         # If not sampled and exists in base params, copy it
-        s[[nm]] <- params[[nm]]
+        s[[nm]] <- params[[nm]]   # Use deterministic value
       } else if (is.null(s[[nm]])) {
         # If doesn't exist at all, set to 0
         s[[nm]] <- 0
@@ -383,7 +464,7 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   log_info(paste(n_sim, "PSA samples generated successfully"))
   
   # ============================================================
-  # ✅ CRITICAL FIX: VE-COVERAGE RESCALING (NEW LOGIC)
+  # VE-COVERAGE RESCALING 
   # ============================================================
   # 
   # PURPOSE: Ensure population-level VE reflects coverage changes
@@ -506,6 +587,10 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   list(samples = samples, psa_df = NULL)
 }
 
+# ============================================================
+# PARALLEL PSA EXECUTION
+# ============================================================
+
 # Run PSA with parallel processing (cleaned up & reproducible)
 run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
   # Determine cores (at least 1; cap at n_sim to avoid idle workers)
@@ -555,7 +640,7 @@ run_psa <- function(params, n_sim = 1000, wtp = 50000, seed = 2025) {
     i = seq_len(n_sim),
     .combine = "rbind"
   ) %dopar% {
-    r_i <- eval_all_strategies(samp[[i]]) # here the sample is used
+    r_i <- eval_all_strategies(samp$samples[[i]]) # here the sample is used
     tibble::tibble(
       sim = i,
       Strategy = names(r_i),

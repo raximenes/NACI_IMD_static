@@ -26,7 +26,7 @@ if (!exists("n_cohort")) {
 # PSA configuration
 # TYPICAL: 2,500-10,000 for final analysis; 100-500 for testing
 if (!exists("N_SIMULATIONS")) {
-  N_SIMULATIONS <- 1L
+  N_SIMULATIONS <- 2500L
 }
 
 ANALYSIS_PERSPECTIVE <- "both"  # "healthcare", "societal", or "both"
