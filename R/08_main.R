@@ -22,7 +22,7 @@ main <- function() {
   # Plot ICER frontier
   p_icer <- try(plot(det$icers), silent = TRUE)
   if (inherits(p_icer, "ggplot")) {
-    try(ggsave(file.path(OUT_FIG, "base_case_icers_frontier.png"), p_icer, width = 7, height = 5, dpi = 300))
+    try(ggsave(file.path(OUT_FIG_DET, "base_case_icers_frontier.png"), p_icer, width = 7, height = 5, dpi = 300))
     try(print(p_icer))
   }
   
@@ -36,12 +36,12 @@ main <- function() {
   
   # Plot CEAC
   p_ceac <- try(plot(objs$ceac), silent = TRUE)
-  if (inherits(p_ceac, "ggplot")) try(ggsave(file.path(OUT_FIG, "psa_ceac.png"), p_ceac, width = 7, height = 5, dpi = 300))
+  if (inherits(p_ceac, "ggplot")) try(ggsave(file.path(OUT_FIG_KEY, "psa_ceac.png"), p_ceac, width = 7, height = 5, dpi = 300))
   
   
   # Plot EVPI
   p_evpi <- try(plot(objs$evpi), silent = TRUE)
-  if (inherits(p_evpi, "ggplot")) try(ggsave(file.path(OUT_FIG, "psa_evpi.png"), p_evpi, width = 7, height = 5, dpi = 300))
+  if (inherits(p_evpi, "ggplot")) try(ggsave(file.path(OUT_FIG_KEY, "psa_evpi.png"), p_evpi, width = 7, height = 5, dpi = 300))
   
   ## --- ONE-WAY SENSITIVITY ANALYSIS (OWSA) ---
   log_info("\n=== Running One-Way Sensitivity Analysis (OWSA) ===")

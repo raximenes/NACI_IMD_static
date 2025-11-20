@@ -140,68 +140,61 @@ n_states <- length(v_states)
 # STRUCTURE:
 # outputs/
 # ├── figures/
-# │   ├── Base_Case/
-# │   │   ├── healthcare/
-# │   │   └── societal/
-# │   ├── PSA/
-# │   │   ├── healthcare/
-# │   │   └── societal/
-# │   ├── OWSA/
-# │   │   ├── healthcare/
-# │   │   └── societal/
-# │   └── KEY_PLOTS/
-# │       ├── healthcare/
-# │       └── societal/
+# │   ├── healthcare/
+# │   │   ├── Base_Case/
+# │   │   ├── PSA/
+# │   │   ├── OWSA/
+# │   │   └── KEY_PLOTS/
+# │   └── societal/
+# │       ├── Base_Case/
+# │       ├── PSA/
+# │       ├── OWSA/
+# │       └── KEY_PLOTS/
 # └── tables/
 #     ├── healthcare/
 #     └── societal/
 
-# Base folders (shared across perspectives)
-OUT_FIG_BASE_PSA   <- file.path(OUT_FIG, "PSA")
-OUT_FIG_BASE_OWSA  <- file.path(OUT_FIG, "OWSA")
-OUT_FIG_BASE_KEY   <- file.path(OUT_FIG, "KEY_PLOTS")
-OUT_FIG_BASE_DET   <- file.path(OUT_FIG, "Base_Case")
+# Base folders (organized by perspective FIRST)
+OUT_FIG_BASE_HC <- file.path(OUT_FIG, "healthcare")
+OUT_FIG_BASE_SOC <- file.path(OUT_FIG, "societal")
 
-# Create base folders
-dir.create(OUT_FIG_BASE_PSA, recursive = TRUE, showWarnings = FALSE)
-dir.create(OUT_FIG_BASE_OWSA, recursive = TRUE, showWarnings = FALSE)
-dir.create(OUT_FIG_BASE_KEY, recursive = TRUE, showWarnings = FALSE)
-dir.create(OUT_FIG_BASE_DET, recursive = TRUE, showWarnings = FALSE)
+# Create base perspective folders
+dir.create(OUT_FIG_BASE_HC, recursive = TRUE, showWarnings = FALSE)
+dir.create(OUT_FIG_BASE_SOC, recursive = TRUE, showWarnings = FALSE)
 
-# Perspective-specific folders (updated when perspective changes)
+# Analysis type subfolders (updated when perspective changes)
 # These variables are global and shared across all scripts
-OUT_FIG_PSA  <- file.path(OUT_FIG_BASE_PSA, perspective)
-OUT_FIG_OWSA <- file.path(OUT_FIG_BASE_OWSA, perspective)
-OUT_FIG_KEY  <- file.path(OUT_FIG_BASE_KEY, perspective)
-OUT_FIG_DET  <- file.path(OUT_FIG_BASE_DET, perspective)
-OUT_TAB_PERSP <- file.path(OUT_TAB, perspective)
+OUT_FIG_PSA  <- file.path(OUT_FIG, perspective, "PSA")        # For PSA parameter distributions ONLY
+OUT_FIG_OWSA <- file.path(OUT_FIG, perspective, "OWSA")       # For OWSA tornado plots
+OUT_FIG_KEY  <- file.path(OUT_FIG, perspective, "KEY_PLOTS")  # For CEAC, EVPI, and key PSA outputs
+OUT_FIG_DET  <- file.path(OUT_FIG, perspective, "Base_Case")  # For base case ICER frontier
+#OUT_TAB_PERSP <- file.path(OUT_TAB, perspective)              # For all tables
 
-# Create perspective-specific folders
+# Create perspective-specific analysis folders
 dir.create(OUT_FIG_PSA, recursive = TRUE, showWarnings = FALSE)
 dir.create(OUT_FIG_OWSA, recursive = TRUE, showWarnings = FALSE)
 dir.create(OUT_FIG_KEY, recursive = TRUE, showWarnings = FALSE)
 dir.create(OUT_FIG_DET, recursive = TRUE, showWarnings = FALSE)
-dir.create(OUT_TAB_PERSP, recursive = TRUE, showWarnings = FALSE)
+#dir.create(OUT_TAB_PERSP, recursive = TRUE, showWarnings = FALSE)
 
 # ============================================================
 # HELPER FUNCTION: Update folders when perspective changes
 # ============================================================
 
 # Call this function after changing perspective to update all paths
-# USAGE: update_output_folders("societal")
 update_output_folders <- function(new_perspective) {
-  OUT_FIG_PSA  <<- file.path(OUT_FIG_BASE_PSA, new_perspective)
-  OUT_FIG_OWSA <<- file.path(OUT_FIG_BASE_OWSA, new_perspective)
-  OUT_FIG_KEY  <<- file.path(OUT_FIG_BASE_KEY, new_perspective)
-  OUT_FIG_DET  <<- file.path(OUT_FIG_BASE_DET, new_perspective)
-  OUT_TAB_PERSP <<- file.path(OUT_TAB, new_perspective)
+  OUT_FIG_PSA  <<- file.path(OUT_FIG, new_perspective, "PSA")
+  OUT_FIG_OWSA <<- file.path(OUT_FIG, new_perspective, "OWSA")
+  OUT_FIG_KEY  <<- file.path(OUT_FIG, new_perspective, "KEY_PLOTS")
+  OUT_FIG_DET  <<- file.path(OUT_FIG, new_perspective, "Base_Case")
+#  OUT_TAB_PERSP <<- file.path(OUT_TAB, new_perspective)
   
   # Ensure directories exist
   dir.create(OUT_FIG_PSA, recursive = TRUE, showWarnings = FALSE)
   dir.create(OUT_FIG_OWSA, recursive = TRUE, showWarnings = FALSE)
   dir.create(OUT_FIG_KEY, recursive = TRUE, showWarnings = FALSE)
   dir.create(OUT_FIG_DET, recursive = TRUE, showWarnings = FALSE)
-  dir.create(OUT_TAB_PERSP, recursive = TRUE, showWarnings = FALSE)
+#  dir.create(OUT_TAB_PERSP, recursive = TRUE, showWarnings = FALSE)
   
   log_info(paste("Output folders updated for perspective:", new_perspective))
 }

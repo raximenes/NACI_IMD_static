@@ -252,21 +252,14 @@ for (current_perspective in perspectives_to_run) {
 
     # Set perspective
     perspective <- current_perspective
-    update_output_folders(current_perspective)
     n_cohort <- as.integer(COHORT_SIZE)
     
-    # Create perspective-specific folder for base case plots
-    if (current_perspective == "healthcare") {
-      folder_name <- "Healthcare"
-    } else if (current_perspective == "societal") {
-      folder_name <- "societal"
-    } else {
-      folder_name <- current_perspective
-    }
+    update_output_folders(current_perspective)
     
-    OUT_FIG_DETERM <- file.path(OUT_FIG, "Base_Case", folder_name)
-    dir.create(OUT_FIG_DETERM, recursive = TRUE, showWarnings = FALSE)
-    message("[INFO] Base Case plots will be saved to: ", OUT_FIG_DETERM)
+    # Log where outputs will be saved
+    message("[INFO] Base Case plots will be saved to: ", OUT_FIG_DET)
+    message("[INFO] Key plots (CEAC, EVPI) will be saved to: ", OUT_FIG_KEY)
+    message("[INFO] OWSA plots will be saved to: ", OUT_FIG_OWSA)
     
    
     
@@ -289,7 +282,7 @@ for (current_perspective in perspectives_to_run) {
     # Plot ICER frontier
     p_icer <- try(plot(det$icers), silent = TRUE)
     if (inherits(p_icer, "ggplot")) {
-      filename <- file.path(OUT_FIG_DETERM, paste0("base_case_icers_frontier_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DET, paste0("base_case_icers_frontier_", current_perspective, ".png"))
       try(ggsave(filename, p_icer, width = 7, height = 5, dpi = 300))
       try(print(p_icer))
     }
@@ -360,14 +353,14 @@ for (current_perspective in perspectives_to_run) {
     # Plot CEAC
     p_ceac <- try(plot(objs$ceac), silent = TRUE)
     if (inherits(p_ceac, "ggplot")) {
-      filename <- file.path(OUT_FIG_DETERM, paste0("psa_ceac_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DET, paste0("psa_ceac_", current_perspective, ".png"))
       try(ggsave(filename, p_ceac, width = 7, height = 5, dpi = 300))
     }
     
     # Plot EVPI
     p_evpi <- try(plot(objs$evpi), silent = TRUE)
     if (inherits(p_evpi, "ggplot")) {
-      filename <- file.path(OUT_FIG_DETERM, paste0("psa_evpi_", current_perspective, ".png"))
+      filename <- file.path(OUT_FIG_DET, paste0("psa_evpi_", current_perspective, ".png"))
       try(ggsave(filename, p_evpi, width = 7, height = 5, dpi = 300))
     }
     
