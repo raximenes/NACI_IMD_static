@@ -246,10 +246,10 @@ for (current_perspective in perspectives_to_run) {
     message(paste("RUNNING ANALYSIS:", toupper(current_perspective), "PERSPECTIVE"))
     message("========================================\n")
     
-   
+    
     
     # UPDATE GLOBAL PERSPECTIVE AND FOLDER STRUCTURE
-
+    
     # Set perspective
     perspective <- current_perspective
     n_cohort <- as.integer(COHORT_SIZE)
@@ -261,7 +261,7 @@ for (current_perspective in perspectives_to_run) {
     message("[INFO] Key plots (CEAC, EVPI) will be saved to: ", OUT_FIG_KEY)
     message("[INFO] OWSA plots will be saved to: ", OUT_FIG_OWSA)
     
-   
+    
     
     # Reload base parameters with correct perspective
     params_bc <- get_base_params()
