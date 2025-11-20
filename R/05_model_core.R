@@ -552,13 +552,26 @@ eval_all_strategies <- function(params) {
 }
 
 # Summarize deterministic results
-summarize_det <- function(res_list, comparator = "MenC") {
+summarize_det <- function(res_list, comparator = NULL) {
   # Extract costs and QALYs
   df <- tibble::tibble(
     Strategy = names(res_list),
     Cost     = vapply(res_list, function(x) x$cost, numeric(1)),
     QALYs    = vapply(res_list, function(x) x$qalys, numeric(1))
   )
+  
+  # Auto-select comparator if not specified (lowest cost strategy)
+  if (is.null(comparator)) {
+    comparator <- df$Strategy[which.min(df$Cost)]
+    log_info(paste("Auto-selected comparator (lowest cost):", comparator))
+  } else {
+    log_info(paste("Using specified comparator:", comparator))
+  }
+  
+  # Validate comparator exists in results
+  if (!comparator %in% names(res_list)) {
+    log_error(paste("Comparator", comparator, "not found in results"))
+  }
   
   # Calculate ICERs
   icers <- dampack::calculate_icers(
@@ -602,6 +615,7 @@ summarize_det <- function(res_list, comparator = "MenC") {
   return(list(
     table = df,
     icers = icers,
-    incremental = df_inc
+    incremental = df_inc,
+    comparator = comparator  # Return comparator used for transparency
   ))
 }

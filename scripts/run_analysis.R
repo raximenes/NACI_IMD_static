@@ -106,7 +106,7 @@ message("[INFO] All model files loaded successfully\n")
 # ============================================================
 
 # Analysis settings
-N_SIMULATIONS <-2500L       # Number of PSA simulations
+N_SIMULATIONS <-20L       # Number of PSA simulations
 COHORT_SIZE <- n_cohort       # Number of individuals in the cohort -  defined in 02_globals.R
 
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
@@ -272,8 +272,8 @@ for (current_perspective in perspectives_to_run) {
     
     message("[INFO] Running Base Case Analysis...")
     res_det_list <- eval_all_strategies(params_bc)
-    det <- summarize_det(res_det_list, comparator = "MenC")
-    
+    det <- summarize_det(res_det_list) # Auto select the lower cost comparator
+
     message("Base Case Results:")
     print(det$table)
     print(det$icers)

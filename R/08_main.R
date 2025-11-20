@@ -12,7 +12,7 @@ main <- function() {
   ## --- BASE CASE ANALYSIS ---
   log_info("\n=== Running Base Case Analysis ===")
   res_det_list <- eval_all_strategies(params_bc)
-  det <- summarize_det(res_det_list, comparator = "MenC")
+  det <- summarize_det(res_det_list)
   
   log_info("\nBase Case Results:")
   print(det$table)
