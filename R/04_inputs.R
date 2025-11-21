@@ -274,6 +274,7 @@ get_base_params <- function() {
   }
   
   c_admin          <- getc("c_admin")
+  wastage_pct      <- getc("c_vaccine_wastage")
   c_Healthy        <- getc("c_Healthy")
   c_Scarring       <- getc("c_Scarring")
   c_Single_Amput   <- getc("c_Single_Amput")
@@ -286,6 +287,7 @@ get_base_params <- function() {
   c_Dead           <- getc("c_Dead")
   
   sd_c_admin          <- get_sd_c("c_admin")
+  sd_wastage_pct      <- get_sd_c("c_vaccine_wastage")
   sd_c_Healthy        <- get_sd_c("c_Healthy")
   sd_c_Scarring       <- get_sd_c("c_Scarring")
   sd_c_Single_Amput   <- get_sd_c("c_Single_Amput")
@@ -296,6 +298,46 @@ get_base_params <- function() {
   sd_c_Seizure        <- get_sd_c("c_Seizure")
   sd_c_Paralysis      <- get_sd_c("c_Paralysis")
   sd_c_Dead           <- get_sd_c("c_Dead")
+  
+  # ============================================================
+  # Calculate vaccine wastage costs (percentage × price)
+  # ============================================================
+  
+  # Calculate wastage cost for each vaccine
+  # Wastage cost = vaccine price × wastage percentage
+  c_wastage_MenC <- c_MenC * wastage_pct
+  c_wastage_MenACWY <- c_MenACWY * wastage_pct
+  c_wastage_MenB <- c_MenB * wastage_pct
+  c_wastage_MenABCWY <- c_MenABCWY * wastage_pct
+  
+  # Calculate SD for wastage costs
+  # SD of wastage = vaccine price × SD of wastage percentage
+  if (!is.na(sd_wastage_pct) && sd_wastage_pct > 0) {
+    sd_c_wastage_MenC <- c_MenC * sd_wastage_pct
+    sd_c_wastage_MenACWY <- c_MenACWY * sd_wastage_pct
+    sd_c_wastage_MenB <- c_MenB * sd_wastage_pct
+    sd_c_wastage_MenABCWY <- c_MenABCWY * sd_wastage_pct
+  } else {
+    # No uncertainty in wastage
+    sd_c_wastage_MenC <- NA
+    sd_c_wastage_MenACWY <- NA
+    sd_c_wastage_MenB <- NA
+    sd_c_wastage_MenABCWY <- NA
+  }
+  
+  log_info("Vaccine wastage costs calculated:")
+  log_info(sprintf("  - MenC wastage: $%.2f (SD: $%.2f)", 
+                   c_wastage_MenC, 
+                   ifelse(is.na(sd_c_wastage_MenC), 0, sd_c_wastage_MenC)))
+  log_info(sprintf("  - MenACWY wastage: $%.2f (SD: $%.2f)", 
+                   c_wastage_MenACWY, 
+                   ifelse(is.na(sd_c_wastage_MenACWY), 0, sd_c_wastage_MenACWY)))
+  log_info(sprintf("  - MenB wastage: $%.2f (SD: $%.2f)", 
+                   c_wastage_MenB, 
+                   ifelse(is.na(sd_c_wastage_MenB), 0, sd_c_wastage_MenB)))
+  log_info(sprintf("  - MenABCWY wastage: $%.2f (SD: $%.2f)", 
+                   c_wastage_MenABCWY, 
+                   ifelse(is.na(sd_c_wastage_MenABCWY), 0, sd_c_wastage_MenABCWY)))
   
   # ============================================================
   # STEP 7: Infection Costs (time-varying vector)
@@ -725,15 +767,30 @@ get_base_params <- function() {
     sd_coverage_C = sd_cov_C,
     sd_coverage_B = sd_cov_B,
     
-    # Vaccine costs
+    # Vaccine prices (ALWAYS FIXED in PSA)
     c_MenABCWY = c_MenABCWY, 
     c_MenACWY = c_MenACWY, 
     c_MenC = c_MenC, 
     c_MenB = c_MenB,
+    
     sd_c_MenABCWY = sd_c_MenABCWY,
     sd_c_MenACWY = sd_c_MenACWY,
     sd_c_MenC = sd_c_MenC,
     sd_c_MenB = sd_c_MenB,
+    
+    # Vaccine wastage costs (derived from prices × wastage %)
+    c_wastage_MenC = c_wastage_MenC,
+    sd_c_wastage_MenC = sd_c_wastage_MenC,
+    c_wastage_MenACWY = c_wastage_MenACWY,
+    sd_c_wastage_MenACWY = sd_c_wastage_MenACWY,
+    c_wastage_MenB = c_wastage_MenB,
+    sd_c_wastage_MenB = sd_c_wastage_MenB,
+    c_wastage_MenABCWY = c_wastage_MenABCWY,
+    sd_c_wastage_MenABCWY = sd_c_wastage_MenABCWY,
+    
+    # Wastage percentage (for reference/scenarios)
+    wastage_pct = wastage_pct,
+    sd_wastage_pct = sd_wastage_pct,
     
     # Other costs
     c_admin = c_admin,

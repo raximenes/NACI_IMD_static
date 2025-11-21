@@ -307,6 +307,17 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
   # Administration cost
   .add_scalar("c_admin", params$c_admin, params$sd_c_admin, "gamma")
   
+  # ============================================================
+  # Vaccine wastage costs (Gamma distribution)
+  # ============================================================
+  # These are derived from vaccine prices × wastage percentage
+  # Even though vaccine prices are FIXED, wastage costs can vary
+  # if wastage percentage has uncertainty
+  .add_scalar("c_wastage_MenC", params$c_wastage_MenC, params$sd_c_wastage_MenC, "gamma")
+  .add_scalar("c_wastage_MenACWY", params$c_wastage_MenACWY, params$sd_c_wastage_MenACWY, "gamma")
+  .add_scalar("c_wastage_MenB", params$c_wastage_MenB, params$sd_c_wastage_MenB, "gamma")
+  .add_scalar("c_wastage_MenABCWY", params$c_wastage_MenABCWY, params$sd_c_wastage_MenABCWY, "gamma")
+  
   # Infection costs (time-varying vector)
   .add_vector("c_IMD_infection", params$c_IMD_infection, params$sd_c_IMD_infection, "gamma")
   

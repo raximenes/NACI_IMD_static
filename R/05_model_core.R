@@ -448,21 +448,22 @@ vaccination_costs <- function(params, strategy) {
   v <- rep(0, params$n_cycles + 1)
   
   if (strategy == "MenC") {
-    v[1] <- params$coverage_C * (params$c_MenC + params$c_admin)
+    # Total cost = (vaccine price + admin + wastage) × coverage
+    v[1] <- params$coverage_C * (params$c_MenC + params$c_admin + params$c_wastage_MenC)
     
   } else if (strategy == "MenACWY") {
-    v[1] <- params$coverage_ACWY * (params$c_MenACWY + params$c_admin)
+    v[1] <- params$coverage_ACWY * (params$c_MenACWY + params$c_admin + params$c_wastage_MenACWY)
     
   } else if (strategy == "MenACWY_MenB") {
     # Initial dose at age 11
-    v[1] <- params$coverage_ACWY * (params$c_MenACWY + params$c_admin)
+    v[1] <- params$coverage_ACWY * (params$c_MenACWY + params$c_admin + params$c_wastage_MenACWY)
     # Booster at age 16 (cycle 6)
     if (params$n_cycles >= 6) {
-      v[6 + 1] <- params$coverage_B * (params$c_MenB + params$c_admin)
+      v[6 + 1] <- params$coverage_B * (params$c_MenB + params$c_admin + params$c_wastage_MenB)
     }
     
   } else if (strategy == "MenABCWY") {
-    v[1] <- params$coverage_ABCWY * (params$c_MenABCWY + params$c_admin)
+    v[1] <- params$coverage_ABCWY * (params$c_MenABCWY + params$c_admin + params$c_wastage_MenABCWY)
   }
   
   return(v)
