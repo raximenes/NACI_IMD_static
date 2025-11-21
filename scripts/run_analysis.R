@@ -2,6 +2,15 @@
 # run_analysis.R
 # Main script to run the complete IMD vaccination cost-effectiveness analysis
 #
+# AUTHORSHIP:
+# ===========
+# Raphael Ximenes (raphael.ximenes@phac-aspc.gc.ca)
+# Gebremedhin Gebretekle (Gebremedhin.Gebretekle@phac-aspc.gc.ca)
+#
+# Modelling & Health Economics Unit
+# Centre for Immunization Surveillance and Programs (CISP)
+# Public Health Agency of Canada (PHAC)
+#
 # WORKFLOW OVERVIEW:
 # ==================
 # This script is designed to work in conjunction with run_psa_distributions_only.R
