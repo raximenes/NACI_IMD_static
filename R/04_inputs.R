@@ -764,6 +764,12 @@ get_base_params <- function() {
     c_Dead = c_Dead,
     sd_c_Dead = sd_c_Dead,
     
+    # Caregiver costs (societal perspective only)
+    c_caregiver_infection = c_caregiver_infection,
+    sd_c_caregiver_infection = sd_c_caregiver_infection,
+    c_caregiver_sequelae = c_caregiver_sequelae,
+    sd_c_caregiver_sequelae = sd_c_caregiver_sequelae,
+    
     # Infection costs (time-varying)
     c_IMD_infection = c_IMD_infection,
     sd_c_IMD_infection = sd_c_IMD_infection,
