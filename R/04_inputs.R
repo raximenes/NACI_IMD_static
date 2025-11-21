@@ -166,6 +166,35 @@ get_base_params <- function() {
     Seizure          = get_sd_societal("Seizure"),
     Paralysis        = get_sd_societal("Paralysis")
   )
+  
+  # ============================================================
+  # STEP 4B: Caregiver Costs (Societal Perspective)
+  # ============================================================
+  
+  if (!is.null(soc_costs)) {
+    # Caregiver costs during infection
+    c_caregiver_infection <- getsc("Caregiver_cost_infection")
+    sd_c_caregiver_infection <- get_sd_societal("Caregiver_cost_infection")
+    
+    # Caregiver costs for sequelae (annual)
+    c_caregiver_sequelae <- getsc("Caregiver_cost_sequelae")
+    sd_c_caregiver_sequelae <- get_sd_societal("Caregiver_cost_sequelae")
+    
+    log_info("Caregiver costs loaded from Excel")
+    log_info(sprintf("  - Infection: $%.2f (SD: %.2f)", 
+                     c_caregiver_infection, 
+                     ifelse(is.na(sd_c_caregiver_infection), 0, sd_c_caregiver_infection)))
+    log_info(sprintf("  - Sequelae: $%.2f (SD: %.2f)", 
+                     c_caregiver_sequelae, 
+                     ifelse(is.na(sd_c_caregiver_sequelae), 0, sd_c_caregiver_sequelae)))
+  } else {
+    # Default to zero if sheet not available
+    c_caregiver_infection <- 0
+    sd_c_caregiver_infection <- NA
+    c_caregiver_sequelae <- 0
+    sd_c_caregiver_sequelae <- NA
+    log_warn("Caregiver costs not found - using zero")
+  }
   # ============================================================
   # STEP 5: Vaccine Prices
   # ============================================================
