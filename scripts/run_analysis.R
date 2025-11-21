@@ -106,7 +106,7 @@ message("[INFO] All model files loaded successfully\n")
 # ============================================================
 
 # Analysis settings
-N_SIMULATIONS <-20L       # Number of PSA simulations
+N_SIMULATIONS <-2500L       # Number of PSA simulations
 COHORT_SIZE <- n_cohort       # Number of individuals in the cohort -  defined in 02_globals.R
 
 WTP_THRESHOLD <- 50000      # Willingness-to-pay threshold (CAD per QALY)
@@ -117,7 +117,8 @@ REUSE_PSA_SAMPLES <- FALSE   # Set to TRUE to reuse existing PSA samples (if ava
 # Set to FALSE to generate new PSA samples
 
 # OWSA Configuration 
-owsa_comparators <- c("all")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
+#owsa_comparators <- c("all")  # Options: "MenC", "MenACWY", c("MenC", "MenACWY"), "all"
+# Note: OWSA will automatically use the same comparator as base case
 owsa_strategies <- NULL  # NULL = all except comparators, or specify: c("MenACWY", "MenABCWY")
 
 # Visualization options
@@ -369,16 +370,16 @@ for (current_perspective in perspectives_to_run) {
     # ============================================================
     
     if (CREATE_OWSA_PLOTS) {
+      
       message("\n[INFO] Running One-Way Sensitivity Analysis (OWSA)...")
+      message("[INFO] Using same comparator as base case: ", det$comparator)
       message("[INFO] OWSA plots will be saved to: ", OUT_FIG_OWSA)
       
-      if (length(owsa_comparators) == 1 && owsa_comparators == "all") {
-        owsa_comparators <- v_strats
-      }
-      
+      # Use same comparator as deterministic analysis for consistency
+
       owsa_out <- execute_owsa(
         params_bc, 
-        comparators = owsa_comparators,
+        comparators = det$comparator,  # Auto-selected from base case
         strategies_to_test = owsa_strategies
       )
       
@@ -391,6 +392,8 @@ for (current_perspective in perspectives_to_run) {
         plot_type = "both",
         perspective = current_perspective
       )
+      
+      message("[INFO] OWSA completed with comparator: ", det$comparator)
       
     } else {
       owsa_out <- NULL
@@ -464,31 +467,20 @@ for (current_perspective in perspectives_to_run) {
       message("[DEBUG] Is dataframe?: ", is.data.frame(psa_results))
     })
     
-    # Save OWSA results (handle multiple comparators)
+    # Save OWSA results
     if (!is.null(owsa_out)) {
       tryCatch({
         message("[DEBUG] Saving OWSA results...")
-        # Check if multiple comparators (new format) or single comparator (old format)
-        if ("comparator" %in% names(owsa_out)) {
-          # Single comparator - old format
-          message("[DEBUG] Single comparator format detected: ", owsa_out$comparator)
-          readr::write_csv(owsa_out$owsa_Cost, 
-                           file.path(OUT_TAB, paste0("owsa_output_cost_", owsa_out$comparator, suffix, ".csv")))
-          readr::write_csv(owsa_out$owsa_QALYs, 
-                           file.path(OUT_TAB, paste0("owsa_output_qalys_", owsa_out$comparator, suffix, ".csv")))
-          message("[DEBUG] ✓ OWSA saved (single comparator)")
-        } else {
-          # Multiple comparators - new format (loop through each comparator)
-          message("[DEBUG] Multiple comparator format detected: ", paste(names(owsa_out), collapse = ", "))
-          for (comp in names(owsa_out)) {
-            message("[DEBUG] Saving OWSA for comparator: ", comp)
-            readr::write_csv(owsa_out[[comp]]$owsa_Cost, 
-                             file.path(OUT_TAB, paste0("owsa_output_cost_", comp, suffix, ".csv")))
-            readr::write_csv(owsa_out[[comp]]$owsa_QALYs, 
-                             file.path(OUT_TAB, paste0("owsa_output_qalys_", comp, suffix, ".csv")))
-          }
-          message("[DEBUG] ✓ OWSA saved (multiple comparators)")
-        }
+        # OWSA now uses single comparator (same as base case)
+        comp <- det$comparator
+        message("[DEBUG] Comparator used: ", comp)
+        
+        readr::write_csv(owsa_out$owsa_Cost, 
+                         file.path(OUT_TAB, paste0("owsa_output_cost_", comp, suffix, ".csv")))
+        readr::write_csv(owsa_out$owsa_QALYs, 
+                         file.path(OUT_TAB, paste0("owsa_output_qalys_", comp, suffix, ".csv")))
+        
+        message("[DEBUG] ✓ OWSA saved (comparator: ", comp, ")")
       }, error = function(e) {
         message("[ERROR] Failed to save OWSA: ", e$message)
       })
