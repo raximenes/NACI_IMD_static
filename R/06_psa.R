@@ -251,6 +251,24 @@ generate_psa_samples <- function(params, n_sim = 1000, seed = 2025) {
       }
     }
   }
+  
+  ## ---- SOCIETAL CAREGIVER COSTS (Gamma distribution) ----  
+  
+  # Only include if base case has caregiver costs defined
+  if (!is.null(params$c_caregiver_infection)) {
+    # Caregiver cost during infection (one-time)
+    .add_scalar("c_caregiver_infection", 
+                params$c_caregiver_infection, 
+                params$sd_c_caregiver_infection, 
+                "gamma")
+    
+    # Caregiver cost for sequelae (annual recurring)
+    .add_scalar("c_caregiver_sequelae", 
+                params$c_caregiver_sequelae, 
+                params$sd_c_caregiver_sequelae, 
+                "gamma")
+  }
+  
   # Helper to add vector parameter
   # Only adds elements that have valid SDs
   # Elements without SD remain FIXED at deterministic values

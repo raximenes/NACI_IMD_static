@@ -234,12 +234,22 @@ get_state_costs <- function(params, t) {
   # ============================================================
   # Get the age-specific infection cost for cycle t
   # Apply the cost multiplier for sensitivity analysis
+  c_inf_base <- params$c_IMD_infection[t] * params$mult_c_IMD
+  
+  # Add caregiver cost during infection (societal perspective only)
+  if (identical(params$perspective, "societal")) {
+    c_inf_total <- c_inf_base + params$c_caregiver_infection
+  } else {
+    c_inf_total <- c_inf_base
+  }
+  
+  # Apply to all serogroups
   c_inf <- c(
-    SeroB_Infect = params$c_IMD_infection[t],
-    SeroC_Infect = params$c_IMD_infection[t],
-    SeroW_Infect = params$c_IMD_infection[t],
-    SeroY_Infect = params$c_IMD_infection[t]
-  ) * params$mult_c_IMD
+    SeroB_Infect = c_inf_total,
+    SeroC_Infect = c_inf_total,
+    SeroW_Infect = c_inf_total,
+    SeroY_Infect = c_inf_total
+  )
   
   # ============================================================
   # SEQUELAE COSTS (annual, constant across cycles)
@@ -305,6 +315,26 @@ get_state_costs <- function(params, t) {
       
       # ADD to sequelae cost
       c_seq[state] <- c_seq[state] + prod_cost
+    }
+    # ============================================================
+    # ADD CAREGIVER COSTS FOR SEQUELAE (societal perspective)  
+    # ============================================================
+    # Get caregiver cost (with validation)
+    caregiver_cost <- params$c_caregiver_sequelae
+    
+    # Validate caregiver cost
+    if (is.null(caregiver_cost) || is.na(caregiver_cost) || !is.numeric(caregiver_cost)) {
+      caregiver_cost <- 0
+    }
+    
+    if (caregiver_cost < 0) {
+      warning(sprintf("Negative caregiver cost: %.2f. Using 0.", caregiver_cost))
+      caregiver_cost <- 0
+    }
+    
+    # Add caregiver cost to ALL sequelae states
+    for (state in sequelae_states) {
+      c_seq[state] <- c_seq[state] + caregiver_cost
     }
   }
   

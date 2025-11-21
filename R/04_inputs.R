@@ -15,11 +15,6 @@
 # - Discount rates loaded from Excel (d_c, d_e in model_settings)
 # - Societal costs loaded from Excel (Societal_Costs sheet)
 # - Vaccine prices ALWAYS FIXED in PSA (no SD used even if present)
-# 
-
-
-
-
 
 file_main  <- file.path(IN_RAW, "IMD Data.xls")
 file_price <- file.path(IN_RAW, "vaccine_costs.xlsx")
