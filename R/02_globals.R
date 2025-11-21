@@ -2,6 +2,15 @@
 # 02_globals.R
 # Description: Global settings, constants, and output folder organization
 #
+# AUTHORSHIP:
+# ===========
+# Raphael Ximenes (raphael.ximenes@phac-aspc.gc.ca)
+# Gebremedhin Gebretekle (Gebremedhin.Gebretekle@phac-aspc.gc.ca)
+#
+# Modelling & Health Economics Unit
+# Centre for Immunization Surveillance and Programs (CISP)
+# Public Health Agency of Canada (PHAC)
+#
 # This script defines:
 # - Simulation configuration (cohort size, PSA iterations, random seed)
 # - Economic parameters (discount rates)
