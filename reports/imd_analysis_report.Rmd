@@ -1,0 +1,177 @@
+---
+title: "IMD Vaccination Cost-Effectiveness Analysis"
+subtitle: "`r paste('Perspective:', tools::toTitleCase(params$perspective))`"
+author: "Health Econ Team, NACI Secretariat"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  word_document:
+    toc: true
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+params:
+  perspective: "healthcare"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, comment = NA)
+library(readr)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+
+# Set paths based on perspective
+perspective <- params$perspective
+tables_path <- file.path("..", "outputs", "tables")
+figures_path <- file.path("..", "outputs", "figures", perspective)
+
+# File paths
+base_res_file <- file.path(tables_path, paste0("base_case_results_", perspective, ".csv"))
+base_icer_file <- file.path(tables_path, paste0("base_case_icers_", perspective, ".csv"))
+psa_res_file <- file.path(tables_path, paste0("psa_long_results_", perspective, ".csv"))
+```
+
+# Introduction
+
+This report presents the results of the cost-effectiveness analysis for Invasive Meningococcal Disease (IMD) vaccination strategies from the **`r perspective`** perspective.
+
+# Base Case Analysis
+
+The deterministic base case analysis compares the costs and QALYs of each strategy using mean parameter values.
+
+## Results Summary
+
+```{r base_case_table}
+if (file.exists(base_res_file)) {
+  base_results <- read_csv(base_res_file, show_col_types = FALSE)
+
+  # Format for display
+  base_display <- base_results %>%
+    mutate(
+      Cost = paste0("$", format(round(Cost), big.mark = ",")),
+      QALYs = round(QALYs, 4)
+    )
+
+  kable(base_display, caption = "Base Case Results: Costs and QALYs")
+} else {
+  cat("Base case results file not found.")
+}
+```
+
+## Incremental Cost-Effectiveness Ratios (ICERs)
+
+The table below shows the incremental analysis, ranking strategies by cost and calculating the ICER for non-dominated strategies.
+
+```{r icer_table}
+if (file.exists(base_icer_file)) {
+  base_icers <- read_csv(base_icer_file, show_col_types = FALSE)
+
+  # Format for display
+  icer_display <- base_icers %>%
+    mutate(
+      Cost = paste0("$", format(round(Cost), big.mark = ",")),
+      Effect = round(Effect, 4),
+      Inc_Cost = ifelse(is.na(Inc_Cost), "-", paste0("$", format(round(Inc_Cost), big.mark = ","))),
+      Inc_Effect = ifelse(is.na(Inc_Effect), "-", round(Inc_Effect, 4)),
+      ICER = ifelse(is.na(ICER), "-", paste0("$", format(round(ICER), big.mark = ",")))
+    )
+
+  kable(icer_display, caption = "Incremental Cost-Effectiveness Ratios")
+} else {
+  cat("ICER results file not found.")
+}
+```
+
+## Cost-Effectiveness Frontier
+
+```{r frontier_plot, fig.cap="Cost-Effectiveness Efficiency Frontier"}
+frontier_img <- file.path(figures_path, "Base_Case", paste0("base_case_icers_frontier_", perspective, ".png"))
+
+if (file.exists(frontier_img)) {
+  knitr::include_graphics(frontier_img)
+} else {
+  cat("Frontier plot not found.")
+}
+```
+
+# Probabilistic Sensitivity Analysis (PSA)
+
+Probabilistic sensitivity analysis was conducted to assess the impact of parameter uncertainty on the results.
+
+## Cost-Effectiveness Acceptability Curve (CEAC)
+
+The CEAC shows the probability that each strategy is cost-effective at different willingness-to-pay (WTP) thresholds.
+
+```{r ceac_plot, fig.cap="Cost-Effectiveness Acceptability Curve"}
+ceac_img <- file.path(figures_path, "Base_Case", paste0("psa_ceac_", perspective, ".png"))
+
+if (file.exists(ceac_img)) {
+  knitr::include_graphics(ceac_img)
+} else {
+  cat("CEAC plot not found.")
+}
+```
+
+## Expected Value of Perfect Information (EVPI)
+
+The EVPI represents the maximum value the healthcare system should be willing to pay for additional research to reduce uncertainty.
+
+```{r evpi_plot, fig.cap="Expected Value of Perfect Information"}
+evpi_img <- file.path(figures_path, "Base_Case", paste0("psa_evpi_", perspective, ".png"))
+
+if (file.exists(evpi_img)) {
+  knitr::include_graphics(evpi_img)
+} else {
+  cat("EVPI plot not found.")
+}
+```
+
+## PSA Summary Statistics
+
+```{r psa_summary}
+if (file.exists(psa_res_file)) {
+  psa_results <- read_csv(psa_res_file, show_col_types = FALSE)
+
+  psa_summary <- psa_results %>%
+    group_by(Strategy) %>%
+    summarise(
+      Mean_Cost = mean(Cost),
+      Mean_QALYs = mean(QALYs),
+      Prob_CE_50k = mean((QALYs * 50000 - Cost) == max(QALYs * 50000 - Cost)) # Approx check
+    ) %>%
+    mutate(
+      Mean_Cost = paste0("$", format(round(Mean_Cost), big.mark = ",")),
+      Mean_QALYs = round(Mean_QALYs, 4),
+      Prob_CE_50k = paste0(round(Prob_CE_50k * 100, 1), "%")
+    )
+
+  kable(psa_summary, caption = "PSA Summary: Mean Costs, QALYs, and Probability Cost-Effective at $50k/QALY")
+} else {
+  cat("PSA results file not found.")
+}
+```
+
+# One-Way Sensitivity Analysis (OWSA)
+
+Tornado diagrams illustrate the impact of varying individual parameters on the results.
+
+```{r owsa_plots, results='asis'}
+owsa_path <- file.path(figures_path, "OWSA")
+if (dir.exists(owsa_path)) {
+  owsa_files <- list.files(owsa_path, pattern = "\\.png$", full.names = TRUE)
+
+  if (length(owsa_files) > 0) {
+    for (f in owsa_files) {
+      cat(paste0("\n## ", tools::toTitleCase(gsub("_", " ", gsub(".png", "", basename(f)))), "\n\n"))
+      print(knitr::include_graphics(f))
+      cat("\n")
+    }
+  } else {
+    cat("No OWSA plots found.")
+  }
+} else {
+  cat("OWSA directory not found.")
+}
+```
