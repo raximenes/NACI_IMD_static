@@ -113,12 +113,12 @@ if (checks$positive_qalys) {
 
 # Check 3: Cost ranking makes sense (more expensive strategies should have more doses)
 cost_order <- base_results$Strategy[order(base_results$Cost)]
-cat(sprintf("\nCost ranking (cheapest → most expensive):\n  %s\n",
+cat(sprintf("\nCost ranking (cheapest → most expensive):\n  %s\n", 
             paste(cost_order, collapse = " < ")))
 
 # Check 4: QALY ranking
 qaly_order <- base_results$Strategy[order(-base_results$QALYs)]
-cat(sprintf("QALY ranking (most QALYs → least):\n  %s\n",
+cat(sprintf("QALY ranking (most QALYs → least):\n  %s\n", 
             paste(qaly_order, collapse = " > ")))
 
 # Check 5: Are there dominated strategies?
@@ -208,7 +208,7 @@ print(best_strategy)
 cat("\n")
 
 optimal <- best_strategy$Strategy[1]
-cat(sprintf("✓ Most likely optimal strategy: %s (%.1f%% probability)\n\n",
+cat(sprintf("✓ Most likely optimal strategy: %s (%.1f%% probability)\n\n", 
             optimal, 100 * best_strategy$Probability[1]))
 
 # ============================================================
@@ -301,7 +301,7 @@ summary_plot <- gridExtra::grid.arrange(
 )
 
 # Save
-output_file <- file.path("outputs", "figures", PERSPECTIVE,
+output_file <- file.path("outputs", "figures", PERSPECTIVE, 
                          paste0("quick_summary_", PERSPECTIVE, ".png"))
 dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
 
@@ -334,11 +334,11 @@ if (all_checks_pass) {
 } else {
   cat("⚠ SOME CHECKS FAILED ⚠\n\n")
   cat("Issues detected:\n")
-
+  
   if (!checks$positive_costs) cat("  ✗ Some costs are not positive\n")
   if (!checks$positive_qalys) cat("  ✗ Some QALYs are not positive\n")
   if (!checks$psa_has_variation) cat("  ✗ PSA shows no variation\n")
-
+  
   cat("\nPlease review the warnings above.\n")
   cat("Common fixes:\n")
   cat("  - Check Excel input file for errors\n")

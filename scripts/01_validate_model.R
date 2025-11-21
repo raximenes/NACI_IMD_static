@@ -1,6 +1,6 @@
 ################################################################################
 # 01_validate_model.R
-#
+# 
 # PURPOSE: Comprehensive validation of IMD vaccination model
 # - Checks model structure and parameters
 # - Validates transition probabilities
@@ -8,7 +8,7 @@
 # - Tests PSA parameter variation
 # - Generates validation report
 #
-# WHEN TO RUN:
+# WHEN TO RUN: 
 # - After any changes to model structure
 # - Before running full analysis
 # - To diagnose unexpected results
@@ -102,7 +102,7 @@ cat(strrep("-", 80), "\n")
 
 # Check all required cost parameters exist
 required_costs <- c(
-  "c_admin", "c_Healthy", "c_Scarring", "c_Single_Amput",
+  "c_admin", "c_Healthy", "c_Scarring", "c_Single_Amput", 
   "c_Multiple_Amput", "c_Neuro_Disab", "c_Hearing_Loss",
   "c_Renal_Failure", "c_Seizure", "c_Paralysis", "c_Dead"
 )
@@ -205,11 +205,11 @@ a_P <- tryCatch({
 
 if (!is.null(a_P)) {
   cat("[PASS] Transition array built successfully\n")
-
+  
   # Check that probabilities sum to 1
   prob_sums <- apply(a_P, 3, function(m) rowSums(m))
   all_sum_to_one <- all(abs(prob_sums - 1) < 1e-6)
-
+  
   if (all_sum_to_one) {
     cat("[PASS] All transition probabilities sum to 1\n")
     validation_results$probs_sum_to_one <- TRUE
@@ -219,7 +219,7 @@ if (!is.null(a_P)) {
     cat(sprintf("  Maximum error: %.6f\n", max_error))
     validation_results$probs_sum_to_one <- FALSE
   }
-
+  
   # Check for negative probabilities
   has_negative <- any(a_P < 0, na.rm = TRUE)
   if (has_negative) {
@@ -229,7 +229,7 @@ if (!is.null(a_P)) {
     cat("[PASS] No negative probabilities\n")
     validation_results$no_negative_probs <- TRUE
   }
-
+  
   validation_results$transition_array_ok <- TRUE
 } else {
   cat("[FAIL] Could not build transition array\n")
@@ -255,12 +255,12 @@ all_results <- tryCatch({
 if (!is.null(all_results)) {
   cat("[PASS] Model executed successfully\n")
   cat(sprintf("  - Strategies evaluated: %d\n", length(all_results)))
-
+  
   # Check that all results have required components
   all_complete <- all(sapply(all_results, function(r) {
     all(c("cost", "qalys", "epi", "trace", "flow") %in% names(r))
   }))
-
+  
   if (all_complete) {
     cat("[PASS] All strategies returned complete results\n")
     validation_results$model_runs <- TRUE
@@ -268,7 +268,7 @@ if (!is.null(all_results)) {
     cat("[FAIL] Some results incomplete\n")
     validation_results$model_runs <- FALSE
   }
-
+  
   # Check for reasonable values
   cat("\n[INFO] Strategy results:\n")
   for (strat in names(all_results)) {
@@ -279,7 +279,7 @@ if (!is.null(all_results)) {
     cat(sprintf("    Infections: %.0f\n", sum(r$epi$infections)))
     cat(sprintf("    Deaths: %.0f\n", r$epi$deaths_imd))
   }
-
+  
 } else {
   cat("[FAIL] Model execution failed\n")
   validation_results$model_runs <- FALSE
@@ -302,32 +302,32 @@ psa_test <- tryCatch({
 
 if (!is.null(psa_test)) {
   cat("[PASS] PSA samples generated\n")
-
+  
   # NEW APPROACH: Check variation in parameter SAMPLES (not psa_df)
   samples <- psa_test$samples
-
+  
   if (length(samples) == 0) {
     cat("[FAIL] No PSA samples returned\n")
     validation_results$psa_generates <- FALSE
     validation_results$psa_varies <- FALSE
   } else {
     validation_results$psa_generates <- TRUE
-
+    
     # Get all parameter names from first sample
     all_param_names <- names(samples[[1]])
-
+    
     # Remove non-numeric parameters
     numeric_params <- all_param_names[sapply(samples[[1]], function(x) {
       is.numeric(x) && length(x) == 1
     })]
-
+    
     cat(sprintf("  - PSA iterations: %d\n", length(samples)))
     cat(sprintf("  - Total scalar parameters: %d\n", length(numeric_params)))
-
+    
     # Check which parameters vary across iterations
     varying_params <- character(0)
     fixed_params <- character(0)
-
+    
     for (param_name in numeric_params) {
       # Extract values across all iterations
       values <- sapply(samples, function(s) {
@@ -335,14 +335,14 @@ if (!is.null(psa_test)) {
         if (is.null(val) || !is.numeric(val)) return(NA)
         return(val)
       })
-
+      
       # Skip if all NA
       if (all(is.na(values))) next
-
+      
       # Check for variation
       param_sd <- sd(values, na.rm = TRUE)
       param_mean <- mean(values, na.rm = TRUE)
-
+      
       # Parameter varies if SD > 0 and CV > 0.0001
       if (!is.na(param_sd) && param_sd > 1e-10) {
         if (abs(param_mean) > 1e-10) {
@@ -360,22 +360,22 @@ if (!is.null(psa_test)) {
         fixed_params <- c(fixed_params, param_name)
       }
     }
-
+    
     cat(sprintf("  - Parameters varying in PSA: %d\n", length(varying_params)))
     cat(sprintf("  - Parameters fixed in PSA: %d\n", length(fixed_params)))
-
+    
     if (length(varying_params) > 0) {
       cat("[PASS] PSA has parameter variation\n")
       validation_results$psa_varies <- TRUE
-
+      
       cat("\n[INFO] Examples of varying parameters:\n")
       # Show first 10 varying parameters
       show_params <- head(varying_params, 10)
       for (param in show_params) {
         values <- sapply(samples, function(s) s[[param]])
-        cat(sprintf("  - %s: mean = %.4f, SD = %.4f\n",
-                    param,
-                    mean(values, na.rm = TRUE),
+        cat(sprintf("  - %s: mean = %.4f, SD = %.4f\n", 
+                    param, 
+                    mean(values, na.rm = TRUE), 
                     sd(values, na.rm = TRUE)))
       }
       if (length(varying_params) > 10) {
@@ -385,7 +385,7 @@ if (!is.null(psa_test)) {
       cat("[FAIL] No parameter variation in PSA\n")
       validation_results$psa_varies <- FALSE
     }
-
+    
     if (length(fixed_params) > 0) {
       cat("\n[INFO] Examples of fixed parameters (expected for vaccine prices):\n")
       # Show first 10 fixed parameters
@@ -396,7 +396,7 @@ if (!is.null(psa_test)) {
       }
     }
   }
-
+  
 } else {
   cat("[FAIL] PSA generation failed\n")
   validation_results$psa_generates <- FALSE
@@ -480,7 +480,7 @@ if (n_fail == 0) {
   cat("✗✗✗ VALIDATION ISSUES DETECTED ✗✗✗\n")
   cat(strrep("=", 80), "\n")
   cat("\nPlease review the failed checks above.\n")
-
+  
   # Special note about PSA variation
   if (!validation_results$psa_varies && validation_results$psa_generates) {
     cat("\n[NOTE] PSA Parameter Variation:\n")
