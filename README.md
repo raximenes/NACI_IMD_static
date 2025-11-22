@@ -23,6 +23,9 @@ The project is organized into the following directories:
     *   `02_analyze_psa_results.R`: In-depth statistical analysis of PSA outputs (correlations, CVs).
     *   `03_model_diagnostics.R`: Deep dive into model mechanics (trace analysis, flow tracking).
     *   `04_quick_results_check.R`: Fast post-run sanity checks and one-page summary.
+    *   `05_render_report.R`: Generates a polished Word report from analysis results.
+*   **`reports/`**: RMarkdown templates and generated reports.
+    *   `imd_analysis_report.Rmd`: Template for the cost-effectiveness report.
 *   **`data/`**: Input data (Excel files).
     *   `raw/`: Place `IMD Data.xls` and `vaccine_costs.xlsx` here.
 *   **`outputs/`**: Generated results.
@@ -60,12 +63,19 @@ To verify model integrity and explore results:
 *   **PSA Analysis**: `source("scripts/02_analyze_psa_results.R")`
 *   **Mechanics**: `source("scripts/03_model_diagnostics.R")`
 
+### Reporting
+
+To generate a formatted Word document report:
+
+*   `source("scripts/05_render_report.R")`
+
 ## 3. Key Features
 
 *   **Dual Perspective**: Automatically handles both Healthcare and Societal perspectives with correct cost logic.
 *   **Parallel PSA**: Uses parallel processing for efficient simulation of large iterations.
 *   **Reproducibility**: Uses fixed seeds for PSA sampling, ensuring common random numbers across perspectives.
 *   **Robust Validation**: Includes dedicated scripts for validation, diagnostics, and result analysis.
+*   **Automated Reporting**: RMarkdown script to generate submission-ready reports.
 
 ## 4. Data Availability
 
